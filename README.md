@@ -15,7 +15,7 @@ This system decomposes healthcare simulation into modular agents—each mimickin
 
 1. Clone the repository:
    ```
-   git clone https://github.com/yourusername/healthcare-sim.git
+   git clone https://github.com/benbarnard-OMI/healthcare-sim.git
    cd healthcare-sim
    ```
 
