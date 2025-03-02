@@ -1,0 +1,79 @@
+ingest_hl7_data:
+  description: >
+    Parse and validate the incoming Synthea HL7 message for patient {patient_id}.
+    Extract key clinical markers, demographics, and event data.
+    Flag any anomalies or inconsistencies in the message structure.
+  expected_output: >
+    A structured JSON object containing:
+    - Patient demographics
+    - Clinical events timeline
+    - Lab results and vital signs
+    - Data quality metrics
+    - Any validation warnings/errors
+  agent: data_ingestion_agent
+
+analyze_diagnostics:
+  description: >
+    Analyze the structured patient data to identify probable diagnoses and risk factors.
+    Consider:
+    - Historical symptoms and presentations
+    - Lab results and vital trends
+    - Family history and demographics
+    - Comorbidity patterns
+  expected_output: >
+    A diagnostic assessment containing:
+    - Ranked list of probable conditions with confidence scores
+    - Supporting evidence for each diagnosis
+    - Recommended additional tests if needed
+    - Risk stratification analysis
+  agent: diagnostics_agent
+
+create_treatment_plan:
+  description: >
+    Develop a comprehensive treatment plan based on diagnostic findings.
+    Include:
+    - Medication recommendations
+    - Therapy schedules
+    - Lifestyle modifications
+    - Follow-up requirements
+    Check for potential drug interactions and contraindications.
+  expected_output: >
+    A detailed treatment plan containing:
+    - Prescribed medications with dosing schedules
+    - Therapy appointments and durations
+    - Dietary and lifestyle recommendations
+    - Follow-up schedule
+    - Precautions and warning signs
+  agent: treatment_planner
+
+coordinate_care:
+  description: >
+    Manage the overall patient care workflow:
+    - Schedule and coordinate all treatment components
+    - Ensure smooth transitions between care phases
+    - Monitor adherence to care plan
+    - Address any scheduling conflicts or resource constraints
+  expected_output: >
+    A care coordination plan including:
+    - Master schedule of all appointments
+    - Resource allocation plan
+    - Communication protocols
+    - Contingency plans
+    - Care transition checklist
+  agent: care_coordinator
+
+evaluate_outcomes:
+  description: >
+    Monitor and analyze treatment outcomes for the patient:
+    - Track recovery progress
+    - Identify complications or adverse events
+    - Compare outcomes against expected benchmarks
+    - Generate effectiveness metrics
+  expected_output: >
+    An outcomes analysis report containing:
+    - Recovery trajectory analysis
+    - Complication tracking
+    - Treatment effectiveness metrics
+    - Recommendations for plan adjustments
+    - Long-term prognosis assessment
+  agent: outcome_evaluator
