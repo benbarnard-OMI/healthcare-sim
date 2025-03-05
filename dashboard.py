@@ -4,6 +4,12 @@ import json
 from datetime import datetime
 from crew import HealthcareSimulationCrew
 from sample_data.sample_messages import SAMPLE_MESSAGES, list_scenarios, get_message
+import logging
+from typing import Dict, Any, Optional
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Page configuration
 st.set_page_config(
@@ -51,7 +57,7 @@ if "simulation_timestamp" not in st.session_state:
     st.session_state.simulation_timestamp = None
 
 # Function to run the simulation
-def run_simulation():
+def run_simulation() -> None:
     if not api_key:
         st.error("Please enter your OpenAI API key in the sidebar")
         return
