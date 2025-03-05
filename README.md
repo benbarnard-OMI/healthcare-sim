@@ -74,6 +74,27 @@ The dashboard allows you to:
 - Visualize simulation results
 - Analyze care pathways interactively
 
+### Running Unit Tests
+
+To run the unit tests for the project, use the following command:
+```
+pytest
+```
+
+This will discover and run all the tests in the `tests` directory.
+
+### Contributing
+
+We welcome contributions to the project! To contribute, please follow these steps:
+
+1. Fork the repository on GitHub.
+2. Create a new branch for your feature or bugfix.
+3. Make your changes and commit them with clear and descriptive commit messages.
+4. Push your changes to your forked repository.
+5. Create a pull request to the main repository.
+
+Please ensure that your code follows the project's coding standards and includes appropriate tests.
+
 ## Project Components
 
 ### 1. Agent Configuration

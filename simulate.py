@@ -4,8 +4,14 @@ import argparse
 from crew import HealthcareSimulationCrew
 from datetime import datetime
 from sample_data.sample_messages import SAMPLE_MESSAGES, list_scenarios, get_message
+import logging
+from typing import Any, Optional
 
-def format_result(result, output_file=None):
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+def format_result(result: Any, output_file: Optional[str] = None) -> str:
     """Format and optionally save the simulation results."""
     output = "\n" + "="*60 + "\n"
     output += "SYNTHETIC CARE PATHWAY SIMULATION RESULTS\n"
@@ -22,11 +28,11 @@ def format_result(result, output_file=None):
     if output_file:
         with open(output_file, 'w') as f:
             f.write(output)
-        print(f"\nResults saved to: {output_file}")
+        logger.info(f"Results saved to: {output_file}")
     
     return output
 
-def main():
+def main() -> None:
     # Set up command-line argument parsing
     parser = argparse.ArgumentParser(description='Synthetic Care Pathway Simulator')
     parser.add_argument('--input', '-i', type=str, help='Path to HL7 message file')
@@ -42,7 +48,7 @@ def main():
     # Set OpenAI API key
     api_key = args.api_key or os.environ.get("OPENAI_API_KEY")
     if not api_key:
-        print("Warning: No OpenAI API key provided. Set with --api-key or OPENAI_API_KEY environment variable.")
+        logger.warning("No OpenAI API key provided. Set with --api-key or OPENAI_API_KEY environment variable.")
         return
     os.environ["OPENAI_API_KEY"] = api_key
     
@@ -54,21 +60,21 @@ def main():
         try:
             with open(args.input, 'r') as f:
                 hl7_message = f.read()
-            print(f"Using HL7 message from: {args.input}")
+            logger.info(f"Using HL7 message from: {args.input}")
         except Exception as e:
-            print(f"Error reading input file: {str(e)}")
+            logger.error(f"Error reading input file: {str(e)}")
     
     if not hl7_message and args.scenario:
         hl7_message = get_message(args.scenario)
-        print(f"Using sample scenario: {args.scenario}")
+        logger.info(f"Using sample scenario: {args.scenario}")
     
     if not hl7_message:
         hl7_message = SAMPLE_MESSAGES["chest_pain"]  # Default scenario
-        print("Using default chest pain scenario")
+        logger.info("Using default chest pain scenario")
     
     # Run the simulation with the HL7 message
     try:
-        print("\nStarting care pathway simulation...\n")
+        logger.info("Starting care pathway simulation...")
         
         # Kick off the simulation
         result = sim_crew.crew().kickoff(inputs={
@@ -80,11 +86,11 @@ def main():
         print(formatted_result)
         
     except Exception as e:
-        print(f"\nSimulation failed: {str(e)}")
+        logger.error(f"Simulation failed: {str(e)}")
         if args.verbose:
             import traceback
-            print("\nDetailed error information:")
-            traceback.print_exc()
+            logger.error("Detailed error information:")
+            logger.error(traceback.format_exc())
 
 if __name__ == "__main__":
     main()

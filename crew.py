@@ -4,6 +4,11 @@ from crewai.project import CrewBase, agent, task, crew, before_kickoff
 from hl7apy import parser as hl7_parser
 from tools.healthcare_tools import HealthcareTools
 import json
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 @CrewBase
 class HealthcareSimulationCrew:
