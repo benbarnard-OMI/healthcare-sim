@@ -78,25 +78,20 @@ def run_simulation() -> None:
             st.session_state.simulation_results = result
             st.session_state.simulation_timestamp = datetime.now()
             
-            # Try to extract patient info from the result
-            try:
-                if hasattr(result, 'raw'):
-                    # Look for patient demographics in the results
-                    patient_info = {}
-                    raw_text = result.raw
-                    
-                    # Very basic extraction - would be more robust in production
-                    if "PATIENT DEMOGRAPHICS" in raw_text:
-                        demo_section = raw_text.split("PATIENT DEMOGRAPHICS")[1].split("\n\n")[0]
-                        lines = demo_section.strip().split("\n")
-                        for line in lines:
-                            if ":" in line:
-                                key, value = line.split(":", 1)
-                                patient_info[key.strip()] = value.strip()
-                    
-                    st.session_state.patient_info = patient_info
-            except Exception as e:
-                st.warning(f"Could not parse patient demographics: {str(e)}")
+            # Access structured patient information
+            retrieved_patient_info = sim_crew.patient_data.get('patient_info')
+            validation_issues = sim_crew.validation_issues
+
+            if retrieved_patient_info:
+                st.session_state.patient_info = retrieved_patient_info
+            else:
+                st.session_state.patient_info = None
+                st.warning("Could not retrieve structured patient information after simulation.")
+
+            if validation_issues:
+                st.warning("HL7 Message Validation Issues:")
+                for issue in validation_issues:
+                    st.warning(f"- {issue.get('error_type', 'Error')}: {issue.get('message', 'Unknown issue')}")
                 
         except Exception as e:
             st.error(f"Simulation failed: {str(e)}")
@@ -122,17 +117,22 @@ if st.session_state.simulation_results:
         
         # Display patient info if available
         if st.session_state.patient_info:
-            cols = st.columns(4)
             patient_info = st.session_state.patient_info
             
-            with cols[0]:
-                st.metric("Patient ID", patient_info.get("Patient ID", "N/A"))
-            with cols[1]:
-                st.metric("Age", patient_info.get("Age", "N/A"))
-            with cols[2]:
-                st.metric("Gender", patient_info.get("Gender", "N/A"))
-            with cols[3]:
-                st.metric("Status", patient_info.get("Status", "Active"))
+            # Display key patient demographics
+            st.subheader("Patient Demographics")
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Patient ID", patient_info.get("id", "N/A"))
+                st.metric("Name", patient_info.get("name", "N/A"))
+            with col2:
+                st.metric("DOB", patient_info.get("dob", "N/A"))
+                st.metric("Gender", patient_info.get("gender", "N/A"))
+            with col3:
+                st.metric("Address", patient_info.get("address", "N/A"))
+                st.metric("Status", "Active") # Assuming 'Active' or derive if available
+        else:
+            st.info("Patient demographics not available.")
         
         # Display full results in an expander
         with st.expander("Full Simulation Results", expanded=True):

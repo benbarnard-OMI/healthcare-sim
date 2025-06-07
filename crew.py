@@ -8,6 +8,9 @@ import logging
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
+
+# Define a constant for unknown patient ID
+UNKNOWN_PATIENT_ID = "UNKNOWN_PATIENT_ID"
 logger = logging.getLogger(__name__)
 
 @CrewBase
@@ -26,15 +29,22 @@ class HealthcareSimulationCrew:
 
     @before_kickoff
     def prepare_simulation(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
-        """Validate inputs and prepare patient data before simulation."""
+        """
+        Validates the incoming HL7 message, extracts essential patient information,
+        and prepares the data for the simulation kickoff.
+        This method attempts to parse the HL7 message using hl7apy and falls back
+        to basic string parsing for patient ID if the primary parsing fails.
+        Validation issues encountered during parsing are stored in self.validation_issues.
+        """
         if not inputs.get('hl7_message'):
             raise ValueError("HL7 message is required to start simulation")
         
-        # Parse and validate the HL7 message using hl7apy
+        # Primary attempt to parse the HL7 message using the hl7apy library.
+        # This allows for structured extraction of various HL7 segments and fields.
         try:
             parsed_message = hl7_parser.parse_message(
                 inputs['hl7_message'], 
-                validation_level=2  # Increase validation level
+                validation_level=2  # Standard validation level
             )
             
             # Extract patient demographics from PID segment
@@ -75,25 +85,64 @@ class HealthcareSimulationCrew:
             }
             
         except Exception as e:
-            self.validation_issues.append(str(e))
-            # Don't fail immediately, try to extract what we can
+            self.validation_issues.append({
+                'error_type': type(e).__name__,
+                'message': str(e),
+                'details': 'Primary HL7 parsing failed'
+            })
+
+            # Fallback mechanism: If primary parsing fails, attempt to extract at least the patient ID.
+            # This is crucial for allowing the simulation to proceed with a minimal identifier,
+            # even if the full message structure is problematic.
             if 'patient_id' not in inputs:
-                # Try to extract patient ID using fallback method
                 try:
-                    # Simple string parsing as last resort
+                    # Simple string parsing as a last resort to find PID segment and extract ID.
                     lines = inputs['hl7_message'].strip().split('\n')
+                    pid_found_in_fallback = False
                     for line in lines:
                         if line.startswith('PID'):
                             fields = line.split('|')
-                            if len(fields) > 3:
-                                pid_parts = fields[3].split('^')
-                                if pid_parts:
+                            # PID-3 (Patient Identifier List) is a common field for patient IDs.
+                            # We target the first component (PID-3.1) if available.
+                            if len(fields) > 3 and fields[3]: # Check if PID-3 exists and is not empty
+                                pid_parts = fields[3].split('^') # ID is often the first component
+                                if pid_parts and pid_parts[0]: # Check if the first component exists and is not empty
                                     inputs['patient_id'] = pid_parts[0]
+                                    pid_found_in_fallback = True
                                     break
-                except:
-                    # If all parsing fails, use a placeholder
-                    inputs['patient_id'] = "UNKNOWN"
-                    
+                    if not pid_found_in_fallback:
+                        # This case handles if PID line was not found or ID was not extracted in fallback.
+                        raise ValueError("PID line not found or Patient ID not extracted in fallback string parsing.")
+
+                except Exception as fallback_exception:
+                    # If fallback parsing also fails, log the issue and assign a generic unknown ID.
+                    self.validation_issues.append({
+                        'error_type': 'FallbackParsingError',
+                        'message': 'Failed to extract patient ID via fallback string parsing mechanism.',
+                        'details': str(fallback_exception)
+                    })
+                    # UNKNOWN_PATIENT_ID is used when no identifier can be extracted,
+                    # allowing the system to acknowledge the processing attempt but flag missing data.
+                    inputs['patient_id'] = UNKNOWN_PATIENT_ID
+
+            # Final check: Ensure patient_id is set, even if all attempts failed.
+            if 'patient_id' not in inputs or not inputs['patient_id']:
+                inputs['patient_id'] = UNKNOWN_PATIENT_ID # Assign unknown if still not set.
+                # Log that patient_id was ultimately not found and set to UNKNOWN.
+                # This condition might be met if the initial 'try' failed very early,
+                # and the fallback was either not triggered or also failed to set the patient_id.
+                already_logged_unknown_final_check = any(
+                    issue.get('error_type') == 'PatientIDNotFoundError' and
+                    "Initial parsing and fallback mechanism failed" in issue.get('details', '')
+                    for issue in self.validation_issues
+                )
+                if not already_logged_unknown_final_check: # Avoid duplicate generic messages
+                     self.validation_issues.append({
+                        'error_type': 'PatientIDNotFoundError', # Standardized error type
+                        'message': 'Patient ID could not be determined after all parsing attempts and was set to UNKNOWN_PATIENT_ID.',
+                        'details': 'Initial HL7 parsing failed, and fallback mechanism also failed to yield a patient ID.'
+                    })
+
             inputs['validation_errors'] = self.validation_issues
             
         return inputs
