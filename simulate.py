@@ -1,4 +1,5 @@
 import os
+import sys
 import json
 import argparse
 from crew import HealthcareSimulationCrew
@@ -48,8 +49,8 @@ def main() -> None:
     # Set OpenAI API key
     api_key = args.api_key or os.environ.get("OPENAI_API_KEY")
     if not api_key:
-        logger.warning("No OpenAI API key provided. Set with --api-key or OPENAI_API_KEY environment variable.")
-        return
+        logger.error("OpenAI API key not found. Please set it using the --api-key argument or the OPENAI_API_KEY environment variable.")
+        sys.exit(1)
     os.environ["OPENAI_API_KEY"] = api_key
     
     # Prepare the HL7 message
