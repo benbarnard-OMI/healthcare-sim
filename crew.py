@@ -38,20 +38,243 @@ class HealthcareSimulationCrew:
         with open(self.tasks_config, 'r') as f:
             self._tasks_config = yaml.safe_load(f)
 
+    def _extract_observations(self, parsed_message) -> List[Dict[str, Any]]:
+        """Extract observation/lab results from OBX segments."""
+        observations = []
+        if hasattr(parsed_message, 'OBX'):
+            obx_segments = parsed_message.OBX if isinstance(parsed_message.OBX, list) else [parsed_message.OBX]
+            for obx in obx_segments:
+                try:
+                    obs_data = {
+                        'set_id': str(obx.set_id_obx.value) if hasattr(obx, 'set_id_obx') and obx.set_id_obx.value else '',
+                        'value_type': str(obx.value_type.value) if hasattr(obx, 'value_type') and obx.value_type.value else '',
+                        'observation_identifier': str(obx.observation_identifier.identifier.value) if hasattr(obx, 'observation_identifier') else '',
+                        'observation_description': str(obx.observation_identifier.text.value) if hasattr(obx, 'observation_identifier') and hasattr(obx.observation_identifier, 'text') else '',
+                        'observation_value': str(obx.observation_value.value) if hasattr(obx, 'observation_value') and obx.observation_value.value else '',
+                        'units': str(obx.units.identifier.value) if hasattr(obx, 'units') and hasattr(obx.units, 'identifier') else '',
+                        'reference_range': str(obx.references_range.value) if hasattr(obx, 'references_range') and obx.references_range.value else '',
+                        'abnormal_flags': str(obx.abnormal_flags.value) if hasattr(obx, 'abnormal_flags') and obx.abnormal_flags.value else '',
+                        'observation_result_status': str(obx.observation_result_status.value) if hasattr(obx, 'observation_result_status') and obx.observation_result_status.value else ''
+                    }
+                    observations.append(obs_data)
+                except Exception as e:
+                    self.validation_issues.append({
+                        'error_type': 'OBXParsingError',
+                        'message': f'Failed to parse OBX segment: {str(e)}',
+                        'details': f'OBX segment data extraction failed for set_id {getattr(obx, "set_id_obx", "unknown")}'
+                    })
+        return observations
+
+    def _extract_visit_info(self, parsed_message) -> Dict[str, Any]:
+        """Extract patient visit information from PV1 segment."""
+        visit_info = {}
+        if hasattr(parsed_message, 'PV1'):
+            pv1 = parsed_message.PV1
+            try:
+                visit_info = {
+                    'set_id': str(pv1.set_id_pv1.value) if hasattr(pv1, 'set_id_pv1') and pv1.set_id_pv1.value else '',
+                    'patient_class': str(pv1.patient_class.value) if hasattr(pv1, 'patient_class') and pv1.patient_class.value else '',
+                    'assigned_patient_location': str(pv1.assigned_patient_location.point_of_care.value) if hasattr(pv1, 'assigned_patient_location') and hasattr(pv1.assigned_patient_location, 'point_of_care') else '',
+                    'room': str(pv1.assigned_patient_location.room.value) if hasattr(pv1, 'assigned_patient_location') and hasattr(pv1.assigned_patient_location, 'room') else '',
+                    'bed': str(pv1.assigned_patient_location.bed.value) if hasattr(pv1, 'assigned_patient_location') and hasattr(pv1.assigned_patient_location, 'bed') else '',
+                    'attending_doctor': str(pv1.attending_doctor.id_number.value) if hasattr(pv1, 'attending_doctor') and hasattr(pv1.attending_doctor, 'id_number') else '',
+                    'attending_doctor_name': f"{pv1.attending_doctor.family_name.value}^{pv1.attending_doctor.given_name.value}" if hasattr(pv1, 'attending_doctor') and hasattr(pv1.attending_doctor, 'family_name') else '',
+                    'hospital_service': str(pv1.hospital_service.value) if hasattr(pv1, 'hospital_service') and pv1.hospital_service.value else '',
+                    'admission_type': str(pv1.admission_type.value) if hasattr(pv1, 'admission_type') and pv1.admission_type.value else '',
+                    'admit_date_time': str(pv1.admit_date_time.time) if hasattr(pv1, 'admit_date_time') and pv1.admit_date_time.time else ''
+                }
+            except Exception as e:
+                self.validation_issues.append({
+                    'error_type': 'PV1ParsingError',
+                    'message': f'Failed to parse PV1 segment: {str(e)}',
+                    'details': 'PV1 segment data extraction failed'
+                })
+        return visit_info
+
+    def _extract_procedures(self, parsed_message) -> List[Dict[str, Any]]:
+        """Extract procedure information from PR1 segments."""
+        procedures = []
+        if hasattr(parsed_message, 'PR1'):
+            pr1_segments = parsed_message.PR1 if isinstance(parsed_message.PR1, list) else [parsed_message.PR1]
+            for pr1 in pr1_segments:
+                try:
+                    proc_data = {
+                        'set_id': str(pr1.set_id_pr1.value) if hasattr(pr1, 'set_id_pr1') and pr1.set_id_pr1.value else '',
+                        'procedure_coding_method': str(pr1.procedure_coding_method.value) if hasattr(pr1, 'procedure_coding_method') and pr1.procedure_coding_method.value else '',
+                        'procedure_code': str(pr1.procedure_code.identifier.value) if hasattr(pr1, 'procedure_code') and hasattr(pr1.procedure_code, 'identifier') else '',
+                        'procedure_description': str(pr1.procedure_description.value) if hasattr(pr1, 'procedure_description') and pr1.procedure_description.value else '',
+                        'procedure_date_time': str(pr1.procedure_date_time.time) if hasattr(pr1, 'procedure_date_time') and pr1.procedure_date_time.time else '',
+                        'procedure_functional_type': str(pr1.procedure_functional_type.value) if hasattr(pr1, 'procedure_functional_type') and pr1.procedure_functional_type.value else '',
+                        'surgeon_id': str(pr1.surgeon.id_number.value) if hasattr(pr1, 'surgeon') and hasattr(pr1.surgeon, 'id_number') else '',
+                        'surgeon_name': f"{pr1.surgeon.family_name.value}^{pr1.surgeon.given_name.value}" if hasattr(pr1, 'surgeon') and hasattr(pr1.surgeon, 'family_name') else ''
+                    }
+                    procedures.append(proc_data)
+                except Exception as e:
+                    self.validation_issues.append({
+                        'error_type': 'PR1ParsingError',
+                        'message': f'Failed to parse PR1 segment: {str(e)}',
+                        'details': f'PR1 segment data extraction failed for set_id {getattr(pr1, "set_id_pr1", "unknown")}'
+                    })
+        return procedures
+
+    def _validate_segment_data(self, segment_type: str, data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Validate extracted segment data and return validation issues."""
+        validation_issues = []
+        
+        if segment_type == 'PID':
+            # Validate patient demographics
+            if not data.get('id'):
+                validation_issues.append({
+                    'error_type': 'ValidationError',
+                    'message': 'Patient ID is missing',
+                    'details': 'PID segment must contain a valid patient identifier'
+                })
+            if not data.get('name') or data.get('name') == '^':
+                validation_issues.append({
+                    'error_type': 'ValidationWarning',
+                    'message': 'Patient name is missing or incomplete',
+                    'details': 'PID segment should contain patient name information'
+                })
+            if not data.get('dob'):
+                validation_issues.append({
+                    'error_type': 'ValidationWarning',
+                    'message': 'Patient date of birth is missing',
+                    'details': 'PID segment should contain date of birth for clinical context'
+                })
+        
+        elif segment_type == 'OBX':
+            # Validate observations
+            for obs in data if isinstance(data, list) else [data]:
+                if not obs.get('observation_identifier'):
+                    validation_issues.append({
+                        'error_type': 'ValidationWarning',
+                        'message': 'Observation identifier is missing',
+                        'details': f'OBX segment set_id {obs.get("set_id", "unknown")} lacks proper identifier'
+                    })
+                if not obs.get('observation_value'):
+                    validation_issues.append({
+                        'error_type': 'ValidationWarning',
+                        'message': 'Observation value is missing',
+                        'details': f'OBX segment set_id {obs.get("set_id", "unknown")} lacks observation value'
+                    })
+        
+        return validation_issues
+
+    def _fallback_parse_segments(self, hl7_message: str) -> Dict[str, Any]:
+        """Fallback parsing using string operations when hl7apy fails."""
+        fallback_data = {
+            'patient_info': {},
+            'diagnoses': [],
+            'observations': [],
+            'visit_info': {},
+            'procedures': []
+        }
+        
+        lines = hl7_message.strip().split('\n')
+        
+        for line in lines:
+            if not line.strip():
+                continue
+                
+            fields = line.split('|')
+            segment_type = fields[0]
+            
+            try:
+                if segment_type == 'PID' and len(fields) > 3:
+                    # Extract basic patient info
+                    patient_id = fields[3].split('^')[0] if fields[3] else ''
+                    name_parts = fields[5].split('^') if len(fields) > 5 and fields[5] else []
+                    name = f"{name_parts[0]}^{name_parts[1]}" if len(name_parts) >= 2 else fields[5]
+                    
+                    fallback_data['patient_info'] = {
+                        'id': patient_id,
+                        'name': name,
+                        'dob': fields[7] if len(fields) > 7 else '',
+                        'gender': fields[8] if len(fields) > 8 else '',
+                        'address': fields[11] if len(fields) > 11 else 'Unknown'
+                    }
+                
+                elif segment_type == 'DG1' and len(fields) > 4:
+                    # Extract diagnosis info
+                    fallback_data['diagnoses'].append({
+                        'code': fields[3] if fields[3] else '',
+                        'coding_system': fields[2] if fields[2] else '',
+                        'description': fields[4] if fields[4] else '',
+                        'date': fields[5] if len(fields) > 5 else ''
+                    })
+                
+                elif segment_type == 'OBX' and len(fields) > 5:
+                    # Extract observation info
+                    identifier_parts = fields[3].split('^') if fields[3] else []
+                    fallback_data['observations'].append({
+                        'set_id': fields[1] if fields[1] else '',
+                        'value_type': fields[2] if fields[2] else '',
+                        'observation_identifier': identifier_parts[0] if identifier_parts else '',
+                        'observation_description': identifier_parts[1] if len(identifier_parts) > 1 else '',
+                        'observation_value': fields[5] if fields[5] else '',
+                        'units': fields[6] if len(fields) > 6 else '',
+                        'reference_range': fields[7] if len(fields) > 7 else '',
+                        'abnormal_flags': fields[8] if len(fields) > 8 else '',
+                        'observation_result_status': fields[11] if len(fields) > 11 else ''
+                    })
+                
+                elif segment_type == 'PV1' and len(fields) > 3:
+                    # Extract visit info
+                    location_parts = fields[3].split('^') if fields[3] else []
+                    doctor_parts = fields[7].split('^') if len(fields) > 7 and fields[7] else []
+                    
+                    fallback_data['visit_info'] = {
+                        'set_id': fields[1] if fields[1] else '',
+                        'patient_class': fields[2] if fields[2] else '',
+                        'assigned_patient_location': location_parts[0] if location_parts else '',
+                        'room': location_parts[1] if len(location_parts) > 1 else '',
+                        'bed': location_parts[2] if len(location_parts) > 2 else '',
+                        'attending_doctor': doctor_parts[0] if doctor_parts else '',
+                        'attending_doctor_name': f"{doctor_parts[1]}^{doctor_parts[2]}" if len(doctor_parts) > 2 else '',
+                        'hospital_service': fields[10] if len(fields) > 10 else '',
+                        'admission_type': fields[18] if len(fields) > 18 else '',
+                        'admit_date_time': fields[44] if len(fields) > 44 else ''
+                    }
+                
+                elif segment_type == 'PR1' and len(fields) > 4:
+                    # Extract procedure info
+                    code_parts = fields[3].split('^') if fields[3] else []
+                    surgeon_parts = fields[11].split('^') if len(fields) > 11 and fields[11] else []
+                    
+                    fallback_data['procedures'].append({
+                        'set_id': fields[1] if fields[1] else '',
+                        'procedure_coding_method': fields[2] if fields[2] else '',
+                        'procedure_code': code_parts[0] if code_parts else '',
+                        'procedure_description': code_parts[1] if len(code_parts) > 1 else '',
+                        'procedure_date_time': fields[5] if len(fields) > 5 else '',
+                        'procedure_functional_type': fields[6] if len(fields) > 6 else '',
+                        'surgeon_id': surgeon_parts[0] if surgeon_parts else '',
+                        'surgeon_name': f"{surgeon_parts[1]}^{surgeon_parts[2]}" if len(surgeon_parts) > 2 else ''
+                    })
+                    
+            except Exception as e:
+                self.validation_issues.append({
+                    'error_type': 'FallbackParsingError',
+                    'message': f'Failed to parse {segment_type} segment in fallback mode: {str(e)}',
+                    'details': f'Fallback parsing error for segment: {line[:50]}...'
+                })
+        
+        return fallback_data
+
     @before_kickoff
     def prepare_simulation(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Validates the incoming HL7 message, extracts essential patient information,
-        and prepares the data for the simulation kickoff.
-        This method attempts to parse the HL7 message using hl7apy and falls back
-        to basic string parsing for patient ID if the primary parsing fails.
-        Validation issues encountered during parsing are stored in self.validation_issues.
+        Enhanced HL7 message validation and parsing with support for additional segments.
+        Extracts patient information, diagnoses, observations, visit info, and procedures.
+        Provides comprehensive error handling and validation with fallback mechanisms.
         """
         if not inputs.get('hl7_message'):
             raise ValueError("HL7 message is required to start simulation")
         
-        # Primary attempt to parse the HL7 message using the hl7apy library.
-        # This allows for structured extraction of various HL7 segments and fields.
+        # Reset validation issues for this parsing session
+        self.validation_issues = []
+        
+        # Primary attempt to parse the HL7 message using the hl7apy library
         try:
             parsed_message = hl7_parser.parse_message(
                 inputs['hl7_message'], 
@@ -62,36 +285,70 @@ class HealthcareSimulationCrew:
             pid = parsed_message.PID
             patient_id = str(pid.patient_identifier_list.id_number)
             
-            # Extract more patient information when available
+            # Extract comprehensive patient information
             patient_info = {
                 'id': patient_id,
                 'name': f"{pid.patient_name.family_name}^{pid.patient_name.given_name}",
                 'dob': str(pid.date_time_of_birth.time),
                 'gender': str(pid.administrative_sex.value),
-                'address': str(pid.patient_address.street_address) if hasattr(pid, 'patient_address') else "Unknown"
+                'address': str(pid.patient_address.street_address) if hasattr(pid, 'patient_address') and hasattr(pid.patient_address, 'street_address') else "Unknown",
+                'phone': str(pid.phone_number_home.value) if hasattr(pid, 'phone_number_home') and pid.phone_number_home.value else '',
+                'ssn': str(pid.ssn_number_patient.value) if hasattr(pid, 'ssn_number_patient') and pid.ssn_number_patient.value else ''
             }
             
-            # Extract diagnostic information
+            # Validate patient information
+            pid_validation_issues = self._validate_segment_data('PID', patient_info)
+            self.validation_issues.extend(pid_validation_issues)
+            
+            # Extract diagnostic information from DG1 segments
             diagnoses = []
             if hasattr(parsed_message, 'DG1'):
-                for dg1 in parsed_message.DG1:
-                    diagnoses.append({
-                        'code': str(dg1.diagnosis_code.identifier),
-                        'coding_system': str(dg1.diagnosis_coding_method.value),
-                        'description': str(dg1.diagnosis_description.value),
-                        'date': str(dg1.diagnosis_date_time.time)
-                    })
+                dg1_segments = parsed_message.DG1 if isinstance(parsed_message.DG1, list) else [parsed_message.DG1]
+                for dg1 in dg1_segments:
+                    try:
+                        diagnosis = {
+                            'set_id': str(dg1.set_id_dg1.value) if hasattr(dg1, 'set_id_dg1') and dg1.set_id_dg1.value else '',
+                            'code': str(dg1.diagnosis_code.identifier.value) if hasattr(dg1, 'diagnosis_code') and hasattr(dg1.diagnosis_code, 'identifier') else '',
+                            'coding_system': str(dg1.diagnosis_coding_method.value) if hasattr(dg1, 'diagnosis_coding_method') and dg1.diagnosis_coding_method.value else '',
+                            'description': str(dg1.diagnosis_description.value) if hasattr(dg1, 'diagnosis_description') and dg1.diagnosis_description.value else '',
+                            'date': str(dg1.diagnosis_date_time.time) if hasattr(dg1, 'diagnosis_date_time') and dg1.diagnosis_date_time.time else '',
+                            'type': str(dg1.diagnosis_type.value) if hasattr(dg1, 'diagnosis_type') and dg1.diagnosis_type.value else ''
+                        }
+                        diagnoses.append(diagnosis)
+                    except Exception as e:
+                        self.validation_issues.append({
+                            'error_type': 'DG1ParsingError',
+                            'message': f'Failed to parse DG1 segment: {str(e)}',
+                            'details': f'DG1 segment data extraction failed for set_id {getattr(dg1, "set_id_dg1", "unknown")}'
+                        })
+            
+            # Extract observations from OBX segments
+            observations = self._extract_observations(parsed_message)
+            obx_validation_issues = self._validate_segment_data('OBX', observations)
+            self.validation_issues.extend(obx_validation_issues)
+            
+            # Extract visit information from PV1 segment
+            visit_info = self._extract_visit_info(parsed_message)
+            
+            # Extract procedures from PR1 segments
+            procedures = self._extract_procedures(parsed_message)
             
             # Store the structured data
             inputs['patient_id'] = patient_id
             inputs['patient_info'] = patient_info
             inputs['diagnoses'] = diagnoses
+            inputs['observations'] = observations
+            inputs['visit_info'] = visit_info
+            inputs['procedures'] = procedures
             inputs['full_message'] = parsed_message.to_er7()
             
             # Save for later use
             self.patient_data = {
                 'patient_info': patient_info,
                 'diagnoses': diagnoses,
+                'observations': observations,
+                'visit_info': visit_info,
+                'procedures': procedures,
                 'message': parsed_message
             }
             
@@ -99,62 +356,48 @@ class HealthcareSimulationCrew:
             self.validation_issues.append({
                 'error_type': type(e).__name__,
                 'message': str(e),
-                'details': 'Primary HL7 parsing failed'
+                'details': 'Primary HL7 parsing failed, attempting fallback parsing'
             })
 
-            # Fallback mechanism: If primary parsing fails, attempt to extract at least the patient ID.
-            # This is crucial for allowing the simulation to proceed with a minimal identifier,
-            # even if the full message structure is problematic.
-            if 'patient_id' not in inputs:
-                try:
-                    # Simple string parsing as a last resort to find PID segment and extract ID.
-                    lines = inputs['hl7_message'].strip().split('\n')
-                    pid_found_in_fallback = False
-                    for line in lines:
-                        if line.startswith('PID'):
-                            fields = line.split('|')
-                            # PID-3 (Patient Identifier List) is a common field for patient IDs.
-                            # We target the first component (PID-3.1) if available.
-                            if len(fields) > 3 and fields[3]: # Check if PID-3 exists and is not empty
-                                pid_parts = fields[3].split('^') # ID is often the first component
-                                if pid_parts and pid_parts[0]: # Check if the first component exists and is not empty
-                                    inputs['patient_id'] = pid_parts[0]
-                                    pid_found_in_fallback = True
-                                    break
-                    if not pid_found_in_fallback:
-                        # This case handles if PID line was not found or ID was not extracted in fallback.
-                        raise ValueError("PID line not found or Patient ID not extracted in fallback string parsing.")
-
-                except Exception as fallback_exception:
-                    # If fallback parsing also fails, log the issue and assign a generic unknown ID.
+            # Enhanced fallback mechanism with comprehensive segment parsing
+            try:
+                fallback_data = self._fallback_parse_segments(inputs['hl7_message'])
+                
+                # Use fallback data
+                inputs['patient_id'] = fallback_data['patient_info'].get('id', UNKNOWN_PATIENT_ID)
+                inputs['patient_info'] = fallback_data['patient_info'] if fallback_data['patient_info'] else {'id': UNKNOWN_PATIENT_ID}
+                inputs['diagnoses'] = fallback_data['diagnoses']
+                inputs['observations'] = fallback_data['observations']
+                inputs['visit_info'] = fallback_data['visit_info']
+                inputs['procedures'] = fallback_data['procedures']
+                
+                if not inputs['patient_id'] or inputs['patient_id'] == UNKNOWN_PATIENT_ID:
                     self.validation_issues.append({
-                        'error_type': 'FallbackParsingError',
-                        'message': 'Failed to extract patient ID via fallback string parsing mechanism.',
-                        'details': str(fallback_exception)
+                        'error_type': 'PatientIDNotFoundError',
+                        'message': 'Patient ID could not be determined from HL7 message',
+                        'details': 'Both primary and fallback parsing failed to extract patient identifier'
                     })
-                    # UNKNOWN_PATIENT_ID is used when no identifier can be extracted,
-                    # allowing the system to acknowledge the processing attempt but flag missing data.
-                    inputs['patient_id'] = UNKNOWN_PATIENT_ID
+                
+            except Exception as fallback_exception:
+                self.validation_issues.append({
+                    'error_type': 'FallbackParsingError',
+                    'message': 'Complete parsing failure - both primary and fallback methods failed',
+                    'details': str(fallback_exception)
+                })
+                
+                # Last resort - set minimal data
+                inputs['patient_id'] = UNKNOWN_PATIENT_ID
+                inputs['patient_info'] = {'id': UNKNOWN_PATIENT_ID}
+                inputs['diagnoses'] = []
+                inputs['observations'] = []
+                inputs['visit_info'] = {}
+                inputs['procedures'] = []
 
-            # Final check: Ensure patient_id is set, even if all attempts failed.
-            if 'patient_id' not in inputs or not inputs['patient_id']:
-                inputs['patient_id'] = UNKNOWN_PATIENT_ID # Assign unknown if still not set.
-                # Log that patient_id was ultimately not found and set to UNKNOWN.
-                # This condition might be met if the initial 'try' failed very early,
-                # and the fallback was either not triggered or also failed to set the patient_id.
-                already_logged_unknown_final_check = any(
-                    issue.get('error_type') == 'PatientIDNotFoundError' and
-                    "Initial parsing and fallback mechanism failed" in issue.get('details', '')
-                    for issue in self.validation_issues
-                )
-                if not already_logged_unknown_final_check: # Avoid duplicate generic messages
-                     self.validation_issues.append({
-                        'error_type': 'PatientIDNotFoundError', # Standardized error type
-                        'message': 'Patient ID could not be determined after all parsing attempts and was set to UNKNOWN_PATIENT_ID.',
-                        'details': 'Initial HL7 parsing failed, and fallback mechanism also failed to yield a patient ID.'
-                    })
-
-            inputs['validation_errors'] = self.validation_issues
+        # Always include validation results
+        inputs['validation_errors'] = self.validation_issues
+        inputs['parsing_success'] = len([issue for issue in self.validation_issues if issue['error_type'] in ['Exception', 'FallbackParsingError']]) == 0
+        inputs['validation_warnings'] = len([issue for issue in self.validation_issues if 'Warning' in issue['error_type']])
+        inputs['validation_errors_count'] = len([issue for issue in self.validation_issues if 'Error' in issue['error_type']])
             
         return inputs
 
