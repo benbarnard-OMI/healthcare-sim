@@ -24,10 +24,28 @@ This system decomposes healthcare simulation into modular agents—each mimickin
    pip install -r requirements.txt
    ```
 
-3. Set your OpenAI API key:
-   ```
+3. Set up your LLM backend:
+
+   ### OpenAI (Default)
+   ```bash
    export OPENAI_API_KEY="your-api-key-here"  # Linux/macOS
    set OPENAI_API_KEY=your-api-key-here       # Windows
+   ```
+
+   ### Ollama (Local)
+   1. Install Ollama from https://ollama.ai
+   2. Pull a model: `ollama pull llama2`
+   3. Start Ollama: `ollama serve`
+   4. Set environment variable (optional):
+   ```bash
+   export OLLAMA_MODEL="llama2"
+   export OLLAMA_BASE_URL="http://localhost:11434/v1"
+   ```
+
+   ### Openrouter
+   ```bash
+   export OPENROUTER_API_KEY="your-api-key-here"  # Get from https://openrouter.ai
+   export OPENROUTER_MODEL="openai/gpt-4"         # Choose your preferred model
    ```
 
 ## Usage
@@ -50,15 +68,33 @@ options:
   --output OUTPUT, -o OUTPUT
                         Path to save results
   --api-key API_KEY, -k API_KEY
-                        OpenAI API key
+                        API key for the LLM service
+  --backend BACKEND, -b BACKEND
+                        LLM backend to use (openai, ollama, openrouter)
+  --model MODEL, -m MODEL
+                        Model name to use (e.g., gpt-4, llama2, openai/gpt-4)
+  --base-url BASE_URL   Base URL for the LLM API
+  --temperature TEMPERATURE, -t TEMPERATURE
+                        Temperature for LLM responses (default: 0.7)
   --verbose, -v         Enable verbose output
   --scenario SCENARIO, -s SCENARIO
                         Sample scenario name. Options: chest_pain, diabetes, pediatric, surgical, stroke
+  --test-connection     Test LLM connection and exit
 ```
 
-Example with specific scenario:
-```
-python simulate.py --scenario diabetes --output results.txt
+Example with different backends:
+```bash
+# OpenAI
+python simulate.py --backend openai --api-key your-openai-key --scenario diabetes
+
+# Ollama (local)
+python simulate.py --backend ollama --model llama2 --scenario diabetes
+
+# Openrouter
+python simulate.py --backend openrouter --api-key your-openrouter-key --model openai/gpt-4 --scenario diabetes
+
+# Test connection
+python simulate.py --backend ollama --test-connection
 ```
 
 ### Interactive Dashboard
@@ -69,10 +105,58 @@ streamlit run dashboard.py
 ```
 
 The dashboard allows you to:
-- Select pre-defined patient scenarios
-- Input custom HL7 messages
-- Visualize simulation results
-- Analyze care pathways interactively
+- **Select LLM backend**: Choose between OpenAI, Ollama, or Openrouter
+- **Configure settings**: Set API keys, models, and parameters
+- **Test connections**: Verify your LLM backend is working
+- **Select or input** HL7 patient messages
+- **Run simulations** of patient care pathways
+- **View detailed results** of multi-agent simulations
+- **Analyze outcomes** across different perspectives
+
+## LLM Backend Support
+
+### OpenAI
+- **Models**: gpt-4, gpt-3.5-turbo, and other OpenAI models
+- **Setup**: Requires OpenAI API key
+- **Use case**: High-quality responses with broad model selection
+
+### Ollama (Local)
+- **Models**: llama2, codellama, mistral, and other open-source models
+- **Setup**: Install Ollama locally, no API key required
+- **Use case**: Privacy-focused, offline operation, cost-effective
+
+### Openrouter
+- **Models**: Access to various providers (OpenAI, Anthropic, etc.)
+- **Setup**: Requires Openrouter API key
+- **Use case**: Model diversity, competitive pricing, unified API
+
+## Environment Variables
+
+You can configure the system using environment variables:
+
+```bash
+# Backend selection
+export LLM_BACKEND="ollama"  # openai, ollama, openrouter
+
+# API Keys
+export OPENAI_API_KEY="your-openai-key"
+export OPENROUTER_API_KEY="your-openrouter-key"
+export OLLAMA_API_KEY="optional-ollama-key"
+
+# Models
+export OPENAI_MODEL="gpt-4"
+export OPENROUTER_MODEL="openai/gpt-4"
+export OLLAMA_MODEL="llama2"
+
+# API Endpoints
+export OPENAI_BASE_URL="https://api.openai.com/v1"
+export OPENROUTER_BASE_URL="https://openrouter.ai/api/v1"
+export OLLAMA_BASE_URL="http://localhost:11434/v1"
+
+# General settings
+export LLM_TEMPERATURE="0.7"
+export LLM_MAX_TOKENS="2000"
+```
 
 ### Running Unit Tests
 

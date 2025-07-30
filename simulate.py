@@ -3,6 +3,7 @@ import sys
 import json
 import argparse
 from crew import HealthcareSimulationCrew
+from llm_config import create_llm_config, get_available_backends, LLMBackend
 from datetime import datetime
 from sample_data.sample_messages import SAMPLE_MESSAGES, list_scenarios, get_message
 import logging
@@ -38,20 +39,44 @@ def main() -> None:
     parser = argparse.ArgumentParser(description='Synthetic Care Pathway Simulator')
     parser.add_argument('--input', '-i', type=str, help='Path to HL7 message file')
     parser.add_argument('--output', '-o', type=str, help='Path to save results')
-    parser.add_argument('--api-key', '-k', type=str, help='OpenAI API key')
+    parser.add_argument('--api-key', '-k', type=str, help='API key for the LLM service')
+    parser.add_argument('--backend', '-b', type=str, choices=get_available_backends(), 
+                       default='openai', help=f'LLM backend to use. Options: {", ".join(get_available_backends())}')
+    parser.add_argument('--model', '-m', type=str, help='Model name to use (e.g., gpt-4, llama2, openai/gpt-4)')
+    parser.add_argument('--base-url', type=str, help='Base URL for the LLM API')
+    parser.add_argument('--temperature', '-t', type=float, default=0.7, help='Temperature for LLM responses (default: 0.7)')
     parser.add_argument('--verbose', '-v', action='store_true', help='Enable verbose output')
     parser.add_argument('--scenario', '-s', type=str, help=f'Sample scenario name. Options: {", ".join(list_scenarios())}')
+    parser.add_argument('--test-connection', action='store_true', help='Test LLM connection and exit')
     args = parser.parse_args()
     
-    # Initialize the simulation crew
-    sim_crew = HealthcareSimulationCrew()
-    
-    # Set OpenAI API key
-    api_key = args.api_key or os.environ.get("OPENAI_API_KEY")
-    if not api_key:
-        logger.error("OpenAI API key not found. Please set it using the --api-key argument or the OPENAI_API_KEY environment variable.")
+    # Create LLM configuration
+    try:
+        llm_config = create_llm_config(
+            backend=args.backend,
+            api_key=args.api_key,
+            model=args.model,
+            base_url=args.base_url,
+            temperature=args.temperature
+        )
+        logger.info(f"Using LLM backend: {llm_config}")
+        
+    except Exception as e:
+        logger.error(f"Failed to configure LLM backend: {str(e)}")
         sys.exit(1)
-    os.environ["OPENAI_API_KEY"] = api_key
+    
+    # Test connection if requested
+    if args.test_connection:
+        from llm_config import test_connection
+        if test_connection(llm_config):
+            print(f"✅ Connection to {args.backend} successful!")
+            sys.exit(0)
+        else:
+            print(f"❌ Connection to {args.backend} failed!")
+            sys.exit(1)
+    
+    # Initialize the simulation crew with LLM configuration
+    sim_crew = HealthcareSimulationCrew(llm_config=llm_config)
     
     # Prepare the HL7 message
     hl7_message = None

@@ -3,6 +3,7 @@ import os
 import json
 from datetime import datetime
 from crew import HealthcareSimulationCrew
+from llm_config import create_llm_config, get_available_backends, LLMBackend
 from sample_data.sample_messages import SAMPLE_MESSAGES, list_scenarios, get_message
 import logging
 from typing import Dict, Any, Optional
@@ -25,10 +26,53 @@ st.markdown("### Interactive Dashboard for Healthcare Simulation")
 # Sidebar configuration
 st.sidebar.header("Configuration")
 
-# API Key input
-api_key = st.sidebar.text_input("OpenAI API Key", type="password")
-if api_key:
-    os.environ["OPENAI_API_KEY"] = api_key
+# LLM Backend selection
+available_backends = get_available_backends()
+selected_backend = st.sidebar.selectbox(
+    "LLM Backend",
+    options=available_backends,
+    index=0,
+    help="Choose the LLM backend to use for the simulation"
+)
+
+# API Key input (conditional based on backend)
+api_key = None
+if selected_backend == "openai":
+    api_key = st.sidebar.text_input("OpenAI API Key", type="password")
+elif selected_backend == "openrouter":
+    api_key = st.sidebar.text_input("Openrouter API Key", type="password", 
+                                   help="Get your API key from https://openrouter.ai")
+elif selected_backend == "ollama":
+    api_key = st.sidebar.text_input("Ollama API Key (optional)", type="password",
+                                   help="Leave empty for local Ollama instance")
+
+# Model selection
+model_help = {
+    "openai": "e.g., gpt-4, gpt-3.5-turbo",
+    "openrouter": "e.g., openai/gpt-4, anthropic/claude-3-opus",
+    "ollama": "e.g., llama2, codellama, mistral"
+}
+
+model = st.sidebar.text_input(
+    "Model Name (optional)", 
+    help=f"Model to use. Examples: {model_help.get(selected_backend, '')}"
+)
+
+# Base URL (for advanced users)
+with st.sidebar.expander("Advanced Settings"):
+    base_url = st.sidebar.text_input(
+        "Base URL (optional)",
+        help="Custom API endpoint URL"
+    )
+    
+    temperature = st.sidebar.slider(
+        "Temperature",
+        min_value=0.0,
+        max_value=2.0,
+        value=0.7,
+        step=0.1,
+        help="Controls randomness in responses"
+    )
 
 # Scenario selection
 scenario_options = list_scenarios()
@@ -45,6 +89,9 @@ custom_hl7 = st.sidebar.text_area(
     help="Paste a custom HL7 message here to override the selected scenario"
 )
 
+# Test connection button
+test_connection_button = st.sidebar.button("Test Connection", help="Test connection to the selected LLM backend")
+
 # Run simulation button
 run_button = st.sidebar.button("Run Simulation", type="primary")
 
@@ -58,14 +105,29 @@ if "simulation_timestamp" not in st.session_state:
 
 # Function to run the simulation
 def run_simulation() -> None:
-    if not api_key:
-        st.error("Please enter your OpenAI API key in the sidebar")
+    # Validate API key for backends that require it
+    if selected_backend in ["openai", "openrouter"] and not api_key:
+        st.error(f"Please enter your {selected_backend.title()} API key in the sidebar")
         return
     
     # Display a spinner during simulation
     with st.spinner("Running care pathway simulation..."):
-        # Initialize the simulation crew
-        sim_crew = HealthcareSimulationCrew()
+        try:
+            # Create LLM configuration
+            llm_config = create_llm_config(
+                backend=selected_backend,
+                api_key=api_key,
+                model=model if model else None,
+                base_url=base_url if base_url else None,
+                temperature=temperature
+            )
+            
+            # Initialize the simulation crew with LLM configuration
+            sim_crew = HealthcareSimulationCrew(llm_config=llm_config)
+            
+        except Exception as e:
+            st.error(f"Failed to configure LLM backend: {str(e)}")
+            return
         
         # Get the HL7 message (custom or from selected scenario)
         hl7_message = custom_hl7 if custom_hl7.strip() else get_message(selected_scenario)
@@ -96,6 +158,29 @@ def run_simulation() -> None:
         except Exception as e:
             st.error(f"Simulation failed: {str(e)}")
             st.session_state.simulation_results = None
+
+# Test connection if button clicked
+if test_connection_button:
+    if selected_backend in ["openai", "openrouter"] and not api_key:
+        st.sidebar.error(f"Please enter your {selected_backend.title()} API key first")
+    else:
+        try:
+            from llm_config import test_connection
+            llm_config = create_llm_config(
+                backend=selected_backend,
+                api_key=api_key,
+                model=model if model else None,
+                base_url=base_url if base_url else None,
+                temperature=temperature
+            )
+            
+            with st.spinner("Testing connection..."):
+                if test_connection(llm_config):
+                    st.sidebar.success(f"✅ Connection to {selected_backend} successful!")
+                else:
+                    st.sidebar.error(f"❌ Connection to {selected_backend} failed!")
+        except Exception as e:
+            st.sidebar.error(f"Connection test failed: {str(e)}")
 
 # Run simulation if button clicked
 if run_button:
