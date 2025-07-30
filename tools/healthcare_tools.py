@@ -1,12 +1,12 @@
 from typing import Dict, Any, List, Optional
-from crewai import Tool
+from crewai.tools import BaseTool
 from datetime import datetime, timedelta
 
 class HealthcareTools:
     """Custom tools for healthcare simulation agents"""
     
     @staticmethod
-    def clinical_guidelines_tool() -> Tool:
+    def clinical_guidelines_tool() -> BaseTool:
         """Creates a tool that provides access to clinical guidelines."""
         
         def get_clinical_guidelines(condition: str) -> str:
@@ -56,14 +56,14 @@ class HealthcareTools:
             
             return f"No specific guidelines found for {condition}. Recommend consulting latest medical literature."
             
-        return Tool(
+        return BaseTool(
             name="Clinical Guidelines Search",
             description="Search for evidence-based clinical guidelines for specific conditions",
             func=get_clinical_guidelines
         )
     
     @staticmethod
-    def medication_interaction_tool() -> Tool:
+    def medication_interaction_tool() -> BaseTool:
         """Creates a tool for checking medication interactions."""
         
         def check_medication_interactions(medications: str) -> str:
@@ -98,14 +98,14 @@ class HealthcareTools:
             else:
                 return "No known interactions between the provided medications."
                 
-        return Tool(
+        return BaseTool(
             name="Medication Interaction Checker",
             description="Check for potential interactions between multiple medications",
             func=check_medication_interactions
         )
     
     @staticmethod
-    def appointment_scheduler_tool() -> Tool:
+    def appointment_scheduler_tool() -> BaseTool:
         """Creates a tool for scheduling patient appointments."""
         
         def schedule_appointment(
@@ -173,7 +173,7 @@ class HealthcareTools:
             Instructions: Please arrive 15 minutes early to complete registration.
             """
                 
-        return Tool(
+        return BaseTool(
             name="Appointment Scheduler",
             description="Schedule patient appointments for various medical services",
             func=schedule_appointment
