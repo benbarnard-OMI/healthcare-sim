@@ -27,6 +27,8 @@ analyze_diagnostics:
     - Recommended additional tests if needed
     - Risk stratification analysis
   agent: diagnostics_agent
+  context:
+    - ingest_hl7_data
 
 create_treatment_plan:
   description: >
@@ -45,6 +47,9 @@ create_treatment_plan:
     - Follow-up schedule
     - Precautions and warning signs
   agent: treatment_planner
+  context:
+    - ingest_hl7_data
+    - analyze_diagnostics
 
 coordinate_care:
   description: >
@@ -61,6 +66,10 @@ coordinate_care:
     - Contingency plans
     - Care transition checklist
   agent: care_coordinator
+  context:
+    - ingest_hl7_data
+    - analyze_diagnostics
+    - create_treatment_plan
 
 evaluate_outcomes:
   description: >
@@ -77,3 +86,8 @@ evaluate_outcomes:
     - Recommendations for plan adjustments
     - Long-term prognosis assessment
   agent: outcome_evaluator
+  context:
+    - ingest_hl7_data
+    - analyze_diagnostics
+    - create_treatment_plan
+    - coordinate_care

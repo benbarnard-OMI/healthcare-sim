@@ -31,7 +31,7 @@ class TestHealthcareSimulationCrew(unittest.TestCase):
     def test_prepare_simulation_hl7_missing_dg1(self):
         # HL7 message without DG1 segment
         hl7_message_no_dg1 = (
-            "MSH|^~\&|SYNTHEA|SYNTHEA|SIMULATOR|SIMULATOR|20240101120000||ADT^A01|123456|P|2.5.1\n"
+            "MSH|^~\\&|SYNTHEA|SYNTHEA|SIMULATOR|SIMULATOR|20240101120000||ADT^A01|123456|P|2.5.1\n"
             "PID|1|12345|12345^^^SIMULATOR^MR~2222^^^SIMULATOR^SB|9999999999^^^USSSA^SS|SMITH^JOHN^M||19650312|M|||123 MAIN ST^^BOSTON^MA^02115||555-555-5555|||M|NON|12345|123-45-6789\n"
             "PV1|1|I|MEDSURG^101^01||||10101^JONES^MARIA^L|||CARDIOLOGY||||||ADM|A0|||||||||||||||||||||||||20240101120000"
         )
@@ -45,7 +45,7 @@ class TestHealthcareSimulationCrew(unittest.TestCase):
     def test_prepare_simulation_hl7_missing_address(self):
         # HL7 message with PID segment missing patient address (field 11)
         hl7_message_no_address = (
-            "MSH|^~\&|SYNTHEA|SYNTHEA|SIMULATOR|SIMULATOR|20240101120000||ADT^A01|123456|P|2.5.1\n"
+            "MSH|^~\\&|SYNTHEA|SYNTHEA|SIMULATOR|SIMULATOR|20240101120000||ADT^A01|123456|P|2.5.1\n"
             "PID|1|12345|12345^^^SIMULATOR^MR~2222^^^SIMULATOR^SB|9999999999^^^USSSA^SS|DOE^JANE^F||19800120|F|||||555-555-1212|||F|NON|67890|987-65-4321\n"
             "PV1|1|I|MEDSURG^101^01||||10101^JONES^MARIA^L|||CARDIOLOGY||||||ADM|A0|||||||||||||||||||||||||20240101120000\n"
             "DG1|1|ICD-10-CM|R07.9|CHEST PAIN, UNSPECIFIED|20240101120000|A"
@@ -62,7 +62,7 @@ class TestHealthcareSimulationCrew(unittest.TestCase):
         mock_parse_message.side_effect = Exception("Simulated parsing failure")
         # PID with extra pipe, but ID still in 3rd component of 4th field (index 3)
         hl7_message_varied_pid = (
-            "MSH|^~\&|OTHER_SYS|OTHER_FAC|||20240505220000||ADT^A01|MSGID002|P|2.5.1\n"
+            "MSH|^~\\&|OTHER_SYS|OTHER_FAC|||20240505220000||ADT^A01|MSGID002|P|2.5.1\n"
             "PID|1||PATID789^^^SOURCE^MR||SMITH^JOHN||19700101|M|||||||||||SSN1234"
         )
         inputs = {"hl7_message": hl7_message_varied_pid}
@@ -76,7 +76,7 @@ class TestHealthcareSimulationCrew(unittest.TestCase):
         mock_parse_message.side_effect = Exception("Simulated primary parsing failure")
         # Malformed PID that the fallback will also fail to parse (e.g., no clear ID in expected fallback spot)
         hl7_message_bad_pid_fallback = (
-            "MSH|^~\&|SYS|FAC|||202301011000||ADT^A01|MSG003|P|2.5.1\n"
+            "MSH|^~\\&|SYS|FAC|||202301011000||ADT^A01|MSG003|P|2.5.1\n"
             "PID|1||||||||||||||||||" # Empty PID fields
         )
         inputs = {"hl7_message": hl7_message_bad_pid_fallback}

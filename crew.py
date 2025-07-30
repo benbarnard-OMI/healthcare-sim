@@ -1,4 +1,4 @@
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from crewai import Agent, Crew, Process, Task
 from crewai.project import CrewBase, agent, task, crew, before_kickoff
 from hl7apy import parser as hl7_parser
@@ -26,6 +26,17 @@ class HealthcareSimulationCrew:
         
         # Initialize healthcare tools
         self.healthcare_tools = HealthcareTools()
+        
+        # Storage for dynamically added agents and tasks
+        self._dynamic_agents = {}
+        self._dynamic_tasks = {}
+        
+        # Load configuration files
+        import yaml
+        with open(self.agents_config, 'r') as f:
+            self._agents_config = yaml.safe_load(f)
+        with open(self.tasks_config, 'r') as f:
+            self._tasks_config = yaml.safe_load(f)
 
     @before_kickoff
     def prepare_simulation(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
@@ -147,11 +158,113 @@ class HealthcareSimulationCrew:
             
         return inputs
 
+    def add_dynamic_agent(self, agent_name: str, agent_config: Dict[str, Any], tools: Optional[List] = None) -> None:
+        """
+        Add a new agent dynamically to the simulation crew.
+        
+        Args:
+            agent_name: Unique name for the agent
+            agent_config: Configuration dictionary with role, goal, backstory
+            tools: Optional list of tools for the agent
+        """
+        if agent_name in self._dynamic_agents:
+            logger.warning(f"Agent '{agent_name}' already exists, replacing...")
+        
+        # Validate required fields
+        required_fields = ['role', 'goal', 'backstory']
+        missing_fields = [field for field in required_fields if field not in agent_config]
+        if missing_fields:
+            raise ValueError(f"Agent config missing required fields: {missing_fields}")
+        
+        self._dynamic_agents[agent_name] = {
+            'config': agent_config,
+            'tools': tools or []
+        }
+        logger.info(f"Added dynamic agent: {agent_name}")
+
+    def add_dynamic_task(self, task_name: str, task_config: Dict[str, Any]) -> None:
+        """
+        Add a new task dynamically to the simulation crew.
+        
+        Args:
+            task_name: Unique name for the task
+            task_config: Configuration dictionary with description, expected_output, agent
+        """
+        if task_name in self._dynamic_tasks:
+            logger.warning(f"Task '{task_name}' already exists, replacing...")
+        
+        # Validate required fields
+        required_fields = ['description', 'expected_output', 'agent']
+        missing_fields = [field for field in required_fields if field not in task_config]
+        if missing_fields:
+            raise ValueError(f"Task config missing required fields: {missing_fields}")
+        
+        # Validate that the assigned agent exists
+        agent_name = task_config['agent']
+        if (agent_name not in self._agents_config and 
+            agent_name not in self._dynamic_agents):
+            raise ValueError(f"Task '{task_name}' assigned to non-existent agent: {agent_name}")
+        
+        self._dynamic_tasks[task_name] = task_config
+        logger.info(f"Added dynamic task: {task_name}")
+
+    def get_all_agents(self) -> List[Agent]:
+        """Get all agents including dynamically added ones."""
+        # Get core agents by calling their methods
+        core_agents = [
+            self.data_ingestion_agent(),
+            self.diagnostics_agent(),
+            self.treatment_planner(),
+            self.care_coordinator(),
+            self.outcome_evaluator()
+        ]
+        
+        # Add dynamic agents
+        for agent_name, agent_data in self._dynamic_agents.items():
+            dynamic_agent = Agent(
+                config=agent_data['config'],
+                tools=agent_data['tools'],
+                verbose=True
+            )
+            core_agents.append(dynamic_agent)
+        
+        return core_agents
+
+    def get_all_tasks(self) -> List[Task]:
+        """Get all tasks including dynamically added ones."""
+        # Get core tasks by calling their methods
+        core_tasks = [
+            self.ingest_hl7_data(),
+            self.analyze_diagnostics(),
+            self.create_treatment_plan(),
+            self.coordinate_care(),
+            self.evaluate_outcomes()
+        ]
+        
+        # Add dynamic tasks
+        for task_name, task_config in self._dynamic_tasks.items():
+            dynamic_task = Task(config=task_config)
+            core_tasks.append(dynamic_task)
+        
+        return core_tasks
+
+    def list_available_agents(self) -> List[str]:
+        """List all available agent types (core + dynamic)."""
+        core_agents = list(self._agents_config.keys())
+        dynamic_agents = list(self._dynamic_agents.keys())
+        return core_agents + dynamic_agents
+
+    def list_available_tasks(self) -> List[str]:
+        """List all available task types (core + dynamic)."""
+        core_tasks = list(self._tasks_config.keys())
+        dynamic_tasks = list(self._dynamic_tasks.keys())
+        return core_tasks + dynamic_tasks
+
     @agent
     def data_ingestion_agent(self) -> Agent:
         """Creates the HL7 Data Ingestion Specialist agent."""
         return Agent(
-            config=self.agents_config['data_ingestion_agent'],
+            config=self._agents_config['data_ingestion_agent'],
             verbose=True
         )
 
@@ -159,7 +272,7 @@ class HealthcareSimulationCrew:
     def diagnostics_agent(self) -> Agent:
         """Creates the Clinical Diagnostics Analyst agent."""
         return Agent(
-            config=self.agents_config['diagnostics_agent'],
+            config=self._agents_config['diagnostics_agent'],
             verbose=True,
             tools=[self.healthcare_tools.clinical_guidelines_tool()]
         )
@@ -168,7 +281,7 @@ class HealthcareSimulationCrew:
     def treatment_planner(self) -> Agent:
         """Creates the Treatment Planning Specialist agent."""
         return Agent(
-            config=self.agents_config['treatment_planner'],
+            config=self._agents_config['treatment_planner'],
             verbose=True,
             tools=[
                 self.healthcare_tools.clinical_guidelines_tool(),
@@ -180,7 +293,7 @@ class HealthcareSimulationCrew:
     def care_coordinator(self) -> Agent:
         """Creates the Patient Care Coordinator agent (acts as manager)."""
         coordinator = Agent(
-            config=self.agents_config['care_coordinator'],
+            config=self._agents_config['care_coordinator'],
             verbose=True,
             allow_delegation=True,  # Enable delegation for the manager role
             tools=[self.healthcare_tools.appointment_scheduler_tool()]
@@ -191,7 +304,7 @@ class HealthcareSimulationCrew:
     def outcome_evaluator(self) -> Agent:
         """Creates the Clinical Outcomes Analyst agent."""
         return Agent(
-            config=self.agents_config['outcome_evaluator'],
+            config=self._agents_config['outcome_evaluator'],
             verbose=True
         )
 
@@ -199,43 +312,47 @@ class HealthcareSimulationCrew:
     def ingest_hl7_data(self) -> Task:
         """Task for parsing and validating HL7 data."""
         return Task(
-            config=self.tasks_config['ingest_hl7_data']
+            config=self._tasks_config['ingest_hl7_data']
         )
 
     @task
     def analyze_diagnostics(self) -> Task:
         """Task for diagnostic analysis."""
         return Task(
-            config=self.tasks_config['analyze_diagnostics']
+            config=self._tasks_config['analyze_diagnostics']
         )
 
     @task 
     def create_treatment_plan(self) -> Task:
         """Task for treatment planning."""
         return Task(
-            config=self.tasks_config['create_treatment_plan']
+            config=self._tasks_config['create_treatment_plan']
         )
 
     @task
     def coordinate_care(self) -> Task:
         """Task for care coordination."""
         return Task(
-            config=self.tasks_config['coordinate_care']
+            config=self._tasks_config['coordinate_care']
         )
 
     @task
     def evaluate_outcomes(self) -> Task:
         """Task for outcome evaluation."""
         return Task(
-            config=self.tasks_config['evaluate_outcomes']
+            config=self._tasks_config['evaluate_outcomes']
         )
 
     @crew
     def crew(self) -> Crew:
-        """Creates the Healthcare Simulation crew."""
+        """Creates the Healthcare Simulation crew with core and dynamic agents/tasks."""
+        # Get all agents and tasks (core + dynamic)
+        all_agents = self.get_all_agents()
+        all_tasks = self.get_all_tasks()
+        
         return Crew(
-            agents=self.agents,
-            tasks=self.tasks,
+            agents=all_agents,
+            tasks=all_tasks,
             process=Process.hierarchical,  # Use hierarchical process with care coordinator as manager
             manager_agent=self.care_coordinator(),
             verbose=True
