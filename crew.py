@@ -3,6 +3,7 @@ from crewai import Agent, Crew, Process, Task
 from crewai.project import CrewBase, agent, task, crew, before_kickoff
 from hl7apy import parser as hl7_parser
 from tools.healthcare_tools import HealthcareTools
+from llm_config import LLMConfig, create_llm_config
 import json
 import logging
 
@@ -20,9 +21,13 @@ class HealthcareSimulationCrew:
     agents_config = 'config/agents.yaml'
     tasks_config = 'config/tasks.yaml'
 
-    def __init__(self):
+    def __init__(self, llm_config: Optional[LLMConfig] = None):
         self.patient_data = {}
         self.validation_issues = []
+        
+        # Initialize LLM configuration
+        self.llm_config = llm_config or create_llm_config()
+        logger.info(f"Initialized with LLM backend: {self.llm_config}")
         
         # Initialize healthcare tools
         self.healthcare_tools = HealthcareTools()
@@ -401,6 +406,42 @@ class HealthcareSimulationCrew:
             
         return inputs
 
+    def _create_llm_instance(self):
+        """Create an LLM instance based on configuration"""
+        try:
+            from openai import OpenAI
+            
+            # Get client parameters for the LLM backend
+            client_params = self.llm_config.get_client_params()
+            client = OpenAI(**client_params)
+            
+            # For CrewAI, we need to set the OpenAI client
+            import os
+            if self.llm_config.api_key:
+                os.environ["OPENAI_API_KEY"] = self.llm_config.api_key
+            if self.llm_config.base_url:
+                os.environ["OPENAI_BASE_URL"] = self.llm_config.base_url
+            if self.llm_config.model:
+                os.environ["OPENAI_MODEL_NAME"] = self.llm_config.model
+            
+            return client
+            
+        except Exception as e:
+            logger.error(f"Failed to create LLM instance: {str(e)}")
+            raise
+
+    def get_llm_config_dict(self) -> Dict[str, Any]:
+        """Get LLM configuration as dictionary for CrewAI agents"""
+        config = {
+            'model': self.llm_config.model,
+            'temperature': self.llm_config.temperature,
+        }
+        
+        if self.llm_config.max_tokens:
+            config['max_tokens'] = self.llm_config.max_tokens
+            
+        return config
+
     def add_dynamic_agent(self, agent_name: str, agent_config: Dict[str, Any], tools: Optional[List] = None) -> None:
         """
         Add a new agent dynamically to the simulation crew.
@@ -589,6 +630,9 @@ class HealthcareSimulationCrew:
     @crew
     def crew(self) -> Crew:
         """Creates the Healthcare Simulation crew with core and dynamic agents/tasks."""
+        # Initialize LLM configuration for CrewAI
+        self._create_llm_instance()
+        
         # Get all agents and tasks (core + dynamic)
         all_agents = self.get_all_agents()
         all_tasks = self.get_all_tasks()

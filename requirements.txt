@@ -1,7 +1,11 @@
 crewai>=0.61.0; platform_system=="Windows"
+crewai>=0.61.0; platform_system!="Windows"  # Add support for all platforms
 hl7apy>=1.3.4
 openai>=1.3.0
 chromadb>=0.4.22; platform_system=="Windows"  # This includes pre-built wheels for Windows
+chromadb>=0.4.22; platform_system!="Windows"  # Add support for all platforms
 numpy>=1.24.0  # Required by chromadb
 pyyaml>=6.0
 streamlit>=1.27.0  # For the interactive dashboard
+ollama>=0.3.0  # For Ollama LLM backend support
+httpx>=0.24.0  # For API requests to Openrouter
