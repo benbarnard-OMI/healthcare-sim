@@ -111,7 +111,7 @@ class LLMConfig:
         
         # Temperature
         temp_env = os.getenv('LLM_TEMPERATURE')
-        if temp_env and not hasattr(self, 'temperature'):
+        if temp_env and self.temperature == 0.7:  # Only override if using default
             try:
                 self.temperature = float(temp_env)
             except ValueError:
