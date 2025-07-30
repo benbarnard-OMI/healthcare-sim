@@ -1,15 +1,22 @@
 ingest_hl7_data:
   description: >
-    Parse and validate the incoming Synthea HL7 message for patient {patient_id}.
-    Extract key clinical markers, demographics, and event data.
-    Flag any anomalies or inconsistencies in the message structure.
+    Parse and validate the incoming Synthea HL7 message for patient {patient_id} using enhanced parsing capabilities.
+    Extract comprehensive clinical data including:
+    - Patient demographics (PID segment)
+    - Diagnoses with codes and descriptions (DG1 segments)
+    - Observations and lab results (OBX segments)
+    - Patient visit information (PV1 segment)
+    - Procedures and surgical interventions (PR1 segments)
+    Apply robust validation and error handling with detailed reporting.
   expected_output: >
-    A structured JSON object containing:
-    - Patient demographics
-    - Clinical events timeline
-    - Lab results and vital signs
-    - Data quality metrics
-    - Any validation warnings/errors
+    A comprehensive structured data object containing:
+    - Complete patient demographics (ID, name, DOB, gender, address, phone, SSN)
+    - All diagnoses with ICD codes, coding systems, and dates
+    - Laboratory results and vital signs with values, units, reference ranges, and abnormal flags
+    - Patient visit details (location, attending physician, hospital service, admission type)
+    - Procedure information (codes, descriptions, dates, surgeon details)
+    - Validation statistics (parsing success, warnings count, errors count)
+    - Detailed error reports with specific error types and recovery strategies
   agent: data_ingestion_agent
 
 analyze_diagnostics:
