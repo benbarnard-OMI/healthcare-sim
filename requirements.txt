@@ -9,3 +9,5 @@ pyyaml>=6.0
 streamlit>=1.27.0  # For the interactive dashboard
 ollama>=0.3.0  # For Ollama LLM backend support
 httpx>=0.24.0  # For API requests to Openrouter
+plotly>=5.0.0  # For interactive charts and visualizations
+pandas>=2.0.0  # For data manipulation and display
