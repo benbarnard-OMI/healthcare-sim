@@ -169,15 +169,22 @@ This will discover and run all the tests in the `tests` directory.
 
 ### Contributing
 
-We welcome contributions to the project! To contribute, please follow these steps:
+We welcome contributions to the project! Please see our comprehensive guides:
 
-1. Fork the repository on GitHub.
-2. Create a new branch for your feature or bugfix.
-3. Make your changes and commit them with clear and descriptive commit messages.
-4. Push your changes to your forked repository.
-5. Create a pull request to the main repository.
+- **[Contributing Guide](CONTRIBUTING.md)** - General contribution guidelines
+- **[Developer Documentation](docs/)** - Detailed extension guides for agents, tasks, and tools
 
-Please ensure that your code follows the project's coding standards and includes appropriate tests.
+To contribute:
+
+1. Fork the repository on GitHub
+2. Create a new branch for your feature or bugfix
+3. Follow the patterns established in our [developer guides](docs/DEVELOPER_GUIDE.md)
+4. Make your changes and commit them with clear messages
+5. Include comprehensive tests for new functionality
+6. Push your changes to your forked repository
+7. Create a pull request to the main repository
+
+Please ensure that your code follows the project's coding standards, includes appropriate tests, and maintains clinical accuracy. Healthcare simulation requires attention to evidence-based practices and patient safety considerations.
 
 ## Project Components
 
@@ -232,12 +239,40 @@ The simulation produces a detailed report that includes:
 - Coordinated care schedule
 - Outcome projections and effectiveness metrics
 
-## Customization
+## Developer Documentation
 
-- Add new agents in `config/agents.yaml`
-- Define additional tasks in `config/tasks.yaml`
-- Create custom healthcare tools by extending `healthcare_tools.py`
-- Add new patient scenarios in `sample_data/sample_messages.py`
+### Extension Guides
+
+The system is designed to be highly extensible. Comprehensive developer guides are available:
+
+- **[Complete Developer Guide](docs/DEVELOPER_GUIDE.md)** - Overview of system architecture and extension patterns
+- **[Agent Extension Guide](docs/AGENT_EXTENSION_GUIDE.md)** - How to add new healthcare professional agents
+- **[Task Extension Guide](docs/TASK_EXTENSION_GUIDE.md)** - How to create new healthcare workflow tasks
+- **[Tool Extension Guide](docs/TOOL_EXTENSION_GUIDE.md)** - How to build specialized healthcare tools
+
+### Quick Customization
+
+- **Add new agents**: Define in `config/agents.yaml` and implement in `crew.py`
+- **Create new tasks**: Configure in `config/tasks.yaml` and add to workflow
+- **Build custom tools**: Extend `tools/healthcare_tools.py` with new capabilities
+- **Add patient scenarios**: Include new HL7 messages in `sample_data/sample_messages.py`
+
+## Enhanced Features
+
+### Advanced Healthcare Tools
+
+The system includes sophisticated healthcare tools with enhanced capabilities:
+
+- **Clinical Guidelines Tool**: 10+ medical conditions with evidence-based protocols from major medical societies (AHA/ACC, ADA, AAP, etc.)
+- **Medication Interaction Checker**: 25+ drug interactions with severity levels (SEVERE, MODERATE, MINOR) and brand name recognition
+- **Appointment Scheduler**: Comprehensive scheduling with 8 appointment types, priority handling, and resource management
+
+### Intelligent Search and Recognition
+
+- **Fuzzy Matching**: Recognizes partial condition names and medical abbreviations
+- **Alias Support**: Understands common medical terms (MI → myocardial infarction, CHF → heart failure)
+- **Brand Name Conversion**: Automatically converts brand names to generic drug names
+- **Clinical Decision Support**: Provides specific recommendations and safety alerts
 
 ## License
 
