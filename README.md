@@ -274,6 +274,46 @@ The system includes sophisticated healthcare tools with enhanced capabilities:
 - **Brand Name Conversion**: Automatically converts brand names to generic drug names
 - **Clinical Decision Support**: Provides specific recommendations and safety alerts
 
+### Extensibility Features ✨
+
+The Healthcare Simulation system is designed for easy customization and extension:
+
+#### YAML-based Patient Scenarios
+- **Rich scenario definitions**: Create patient cases with metadata, clinical markers, and validation
+- **Template system**: Use structured YAML templates for consistent scenario creation
+- **Backward compatibility**: Seamless integration with existing Python-based scenarios
+- **Validation**: Built-in validation ensures data quality and clinical accuracy
+
+#### Custom Agent & Task Configuration
+- **Template-based customization**: Ready-to-use templates for healthcare professionals
+- **Dynamic loading**: Add custom agents and tasks at runtime
+- **Professional examples**: Clinical pharmacist, infection control specialist, mental health specialist
+- **Comprehensive validation**: Robust error handling and configuration validation
+
+#### Data Format Support
+- **HL7 v2.x primary support**: Optimized for real-time healthcare communications
+- **FHIR conversion guidance**: Integration with Synthea data via Microsoft FHIR Converter
+- **Multiple storage options**: YAML, individual HL7 files, or database storage
+- **Storage guidelines**: Clear recommendations for data organization and management
+
+#### Getting Started with Extensions
+```bash
+# Validate extensibility features
+python validate_extensibility.py
+
+# See extensibility demonstration
+python demo_extensibility.py
+
+# Use templates for custom configurations
+cp config/custom_agents_template.yaml config/my_custom_agents.yaml
+cp config/custom_tasks_template.yaml config/my_custom_tasks.yaml
+```
+
+For detailed guidance, see:
+- **[Scenario Extension Guide](docs/scenario_extension_guide.md)** - Create custom patient scenarios
+- **[Configuration Extension Guide](docs/configuration_extension_guide.md)** - Add custom agents and tasks  
+- **[Data Format Guide](docs/data_format_guide.md)** - HL7/FHIR data format guidelines
+
 ## License
 
 [MIT License](LICENSE)
