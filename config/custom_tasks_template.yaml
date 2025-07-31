@@ -1,0 +1,217 @@
+# Custom Task Configuration Templates
+# This file provides templates and examples for creating custom healthcare tasks
+
+# Example: Medication Review Task
+medication_review_task:
+  description: >
+    Conduct a comprehensive medication review for patient {patient_id}.
+    Analyze current medications for:
+    - Drug-drug interactions
+    - Drug-disease contraindications  
+    - Dosing appropriateness for age/weight/renal function
+    - Therapeutic duplication
+    - Missing indicated medications
+    - Medication adherence barriers
+  expected_output: >
+    A medication review report containing:
+    - Current medication list with assessment
+    - Identified drug interactions and severity ratings
+    - Dosing recommendations and adjustments
+    - Therapeutic alternatives when appropriate
+    - Patient education points for medication management
+    - Monitoring parameters and follow-up recommendations
+  agent: custom_pharmacist_agent
+  context:
+    - ingest_hl7_data
+    - analyze_diagnostics
+  tools:
+    - medication_interaction_tool
+  max_execution_time: 300
+  
+# Example: Infection Control Assessment
+infection_control_assessment:
+  description: >
+    Assess infection control risks and requirements for patient {patient_id}.
+    Evaluate:
+    - Current infection status and risk factors
+    - Appropriate isolation precautions
+    - Antimicrobial therapy appropriateness
+    - Healthcare-associated infection prevention measures
+    - Contact tracing requirements if applicable
+  expected_output: >
+    An infection control assessment including:
+    - Risk stratification and infection status
+    - Recommended isolation precautions
+    - Antimicrobial stewardship recommendations
+    - Prevention measures and protocols
+    - Monitoring and surveillance requirements
+    - Staff and visitor guidance
+  agent: custom_infection_control_agent
+  context:
+    - ingest_hl7_data
+    - analyze_diagnostics
+  tools:
+    - clinical_guidelines_tool
+  max_execution_time: 250
+
+# Example: Mental Health Screening
+mental_health_screening:
+  description: >
+    Conduct mental health screening and assessment for patient {patient_id}.
+    Consider:
+    - Psychological impact of current medical condition
+    - History of mental health conditions
+    - Social determinants affecting mental health
+    - Coping mechanisms and support systems
+    - Risk factors for depression, anxiety, or other conditions
+  expected_output: >
+    A mental health assessment report with:
+    - Psychological risk factors and protective factors
+    - Screening results and clinical impressions
+    - Recommendations for mental health interventions
+    - Referral suggestions if specialized care needed
+    - Integration points with medical treatment plan
+    - Patient and family support recommendations
+  agent: custom_mental_health_agent
+  context:
+    - ingest_hl7_data
+    - analyze_diagnostics
+  tools:
+    - clinical_guidelines_tool
+  max_execution_time: 400
+
+# Example: Quality Metrics Analysis  
+quality_metrics_analysis:
+  description: >
+    Analyze quality indicators and care metrics for patient {patient_id}.
+    Evaluate:
+    - Adherence to evidence-based care protocols
+    - Key performance indicators and benchmarks
+    - Patient safety metrics and risk indicators
+    - Care coordination effectiveness
+    - Outcome predictions based on current care plan
+  expected_output: >
+    A quality analysis report containing:
+    - Care quality indicators and scores
+    - Comparison to established benchmarks
+    - Identified opportunities for improvement
+    - Risk mitigation recommendations
+    - Process improvement suggestions
+    - Outcome prediction metrics
+  agent: custom_quality_assurance_agent
+  context:
+    - ingest_hl7_data
+    - analyze_diagnostics
+    - create_treatment_plan
+    - coordinate_care
+  max_execution_time: 350
+
+# Example: Discharge Planning Task
+discharge_planning_task:
+  description: >
+    Develop comprehensive discharge planning for patient {patient_id}.
+    Address:
+    - Medical stability and readiness for discharge
+    - Home care requirements and capabilities
+    - Medication reconciliation and education
+    - Follow-up appointments and care coordination
+    - Equipment and service needs
+    - Patient and caregiver education requirements
+  expected_output: >
+    A discharge plan including:
+    - Discharge criteria and timing recommendations
+    - Home care services and equipment needs
+    - Medication list with patient education materials
+    - Follow-up appointment schedule
+    - Warning signs and emergency contacts
+    - Care coordination with outpatient providers
+  agent: care_coordinator
+  context:
+    - ingest_hl7_data
+    - analyze_diagnostics
+    - create_treatment_plan
+    - coordinate_care
+  tools:
+    - appointment_scheduler_tool
+  max_execution_time: 300
+
+# Template for creating new tasks
+task_template:
+  description: >
+    [Describe what this task should accomplish and key considerations]
+    For patient {patient_id}, analyze/evaluate/perform:
+    - [Specific requirement 1]
+    - [Specific requirement 2] 
+    - [Specific requirement 3]
+  expected_output: >
+    [Describe the expected deliverable format and content]
+    A [report/plan/assessment] containing:
+    - [Expected output component 1]
+    - [Expected output component 2]
+    - [Expected output component 3]
+  agent: [agent_name]  # Name of the agent responsible for this task
+  context:  # List of prerequisite tasks that provide input
+    - ingest_hl7_data
+    # - analyze_diagnostics
+    # - create_treatment_plan
+  tools:  # Optional: tools this specific task needs
+    # - clinical_guidelines_tool
+    # - medication_interaction_tool
+  max_execution_time: 300  # Optional: task-specific time limit
+  human_input: false  # Optional: set to true if human input is required
+  async_execution: false  # Optional: set to true for asynchronous execution
+
+# Configuration validation rules
+validation:
+  required_fields:
+    - description
+    - expected_output
+    - agent
+  
+  optional_fields:
+    - context
+    - tools
+    - max_execution_time
+    - human_input
+    - async_execution
+    - callback_name
+    - output_format
+  
+  context_dependencies:
+    # Available tasks that can be used as context
+    - ingest_hl7_data
+    - analyze_diagnostics
+    - create_treatment_plan
+    - coordinate_care
+    - evaluate_outcomes
+  
+  defaults:
+    max_execution_time: 300
+    human_input: false
+    async_execution: false
+    output_format: "text"
+
+# Task execution patterns
+execution_patterns:
+  sequential:
+    description: "Tasks execute one after another in dependency order"
+    use_case: "Standard clinical workflow with clear dependencies"
+    
+  parallel:
+    description: "Independent tasks execute simultaneously"  
+    use_case: "Multiple assessments that don't depend on each other"
+    
+  conditional:
+    description: "Task execution based on previous task results" 
+    use_case: "Branching workflows based on clinical findings"
+
+# Usage instructions:
+# 1. Copy the task_template section
+# 2. Rename it with a unique task name
+# 3. Fill in the description and expected_output fields
+# 4. Specify the responsible agent
+# 5. List any prerequisite tasks in the context field
+# 6. Select appropriate tools if needed
+# 7. Configure execution settings as needed
+# 8. Validate your configuration using the validation rules
+# 9. Add your custom task to the main tasks.yaml file or load it dynamically
