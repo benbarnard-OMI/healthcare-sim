@@ -2,11 +2,13 @@ import unittest
 from unittest.mock import patch
 from crew import HealthcareSimulationCrew, UNKNOWN_PATIENT_ID
 from sample_data.sample_messages import SAMPLE_MESSAGES
+from tests.test_utils import create_mock_llm_config, mock_env_with_api_key
 
 class TestHealthcareSimulationCrew(unittest.TestCase):
 
     def setUp(self):
-        self.sim_crew = HealthcareSimulationCrew()
+        with mock_env_with_api_key():
+            self.sim_crew = HealthcareSimulationCrew(llm_config=create_mock_llm_config())
 
     def test_prepare_simulation_valid_message(self):
         inputs = {'hl7_message': SAMPLE_MESSAGES['chest_pain']}
