@@ -1,0 +1,222 @@
+# Patient Scenario Configuration
+# This file defines patient scenarios that can be used for healthcare simulation
+# Each scenario includes metadata, HL7 message data, and expected clinical markers
+
+scenarios:
+  chest_pain:
+    name: "Chest Pain Patient"
+    description: "Standard patient admission with chest pain - demonstrates cardiac evaluation workflow"
+    category: "cardiology"
+    severity: "moderate"
+    tags: ["chest_pain", "cardiology", "emergency"]
+    metadata:
+      age_group: "adult"
+      gender: "male"
+      primary_condition: "chest_pain_unspecified"
+      expected_duration: "2-4_hours"
+    hl7_message: |
+      MSH|^~\&|SYNTHEA|SYNTHEA|SIMULATOR|SIMULATOR|20240101120000||ADT^A01|123456|P|2.5.1
+      PID|1|12345|12345^^^SIMULATOR^MR~2222^^^SIMULATOR^SB|9999999999^^^USSSA^SS|SMITH^JOHN^M||19650312|M|||123 MAIN ST^^BOSTON^MA^02115||555-555-5555|||M|NON|12345|123-45-6789
+      PV1|1|I|MEDSURG^101^01||||10101^JONES^MARIA^L|||CARDIOLOGY||||||ADM|A0|||||||||||||||||||||||||20240101120000
+      DG1|1|ICD-10-CM|R07.9|CHEST PAIN, UNSPECIFIED|20240101120000|A
+      OBX|1|NM|8867-4^HEART RATE^LN||88|/min|60-100|N|||F
+      OBX|2|NM|8480-6^SYSTOLIC BP^LN||142|mmHg|90-130|H|||F
+      OBX|3|NM|8462-4^DIASTOLIC BP^LN||88|mmHg|60-80|H|||F
+      OBX|4|NM|2160-0^CREATININE^LN||1.0|mg/dL|0.6-1.2|N|||F
+      OBX|5|NM|2345-7^GLUCOSE^LN||110|mg/dL|70-110|N|||F
+    expected_findings:
+      - elevated_blood_pressure
+      - normal_heart_rate
+      - normal_glucose_levels
+    clinical_pathways:
+      - cardiac_workup
+      - ekg_monitoring
+      - troponin_testing
+
+  diabetes:
+    name: "Diabetes with Complications"
+    description: "Diabetic patient with multiple complications - demonstrates endocrine management"
+    category: "endocrinology"
+    severity: "high"
+    tags: ["diabetes", "endocrinology", "chronic_disease"]
+    metadata:
+      age_group: "adult"
+      gender: "female"
+      primary_condition: "diabetes_type2"
+      expected_duration: "3-5_days"
+    hl7_message: |
+      MSH|^~\&|SYNTHEA|SYNTHEA|SIMULATOR|SIMULATOR|20240202080000||ADT^A01|789012|P|2.5.1
+      PID|1|67890|67890^^^SIMULATOR^MR~3333^^^SIMULATOR^SB|8888888888^^^USSSA^SS|JOHNSON^EMILY^F||19580724|F|||456 OAK DR^^CHICAGO^IL^60601||312-555-1234|||F|NON|67890|234-56-7890
+      PV1|1|I|ENDO^202^02||||20202^PATEL^ANITA^S|||ENDOCRINOLOGY||||||ADM|A0|||||||||||||||||||||||||20240202080000
+      DG1|1|ICD-10-CM|E11.9|TYPE 2 DIABETES MELLITUS WITHOUT COMPLICATIONS|20240202080000|A
+      DG1|2|ICD-10-CM|I10|ESSENTIAL (PRIMARY) HYPERTENSION|20240202080000|A
+      DG1|3|ICD-10-CM|E78.5|HYPERLIPIDEMIA, UNSPECIFIED|20240202080000|A
+      OBX|1|NM|8867-4^HEART RATE^LN||76|/min|60-100|N|||F
+      OBX|2|NM|8480-6^SYSTOLIC BP^LN||158|mmHg|90-130|H|||F
+      OBX|3|NM|8462-4^DIASTOLIC BP^LN||92|mmHg|60-80|H|||F
+      OBX|4|NM|2345-7^GLUCOSE^LN||242|mg/dL|70-110|H|||F
+      OBX|5|NM|4548-4^HEMOGLOBIN A1C^LN||8.7|%|4.0-5.6|H|||F
+      OBX|6|NM|2160-0^CREATININE^LN||1.4|mg/dL|0.6-1.2|H|||F
+    expected_findings:
+      - hyperglycemia
+      - elevated_hba1c
+      - elevated_blood_pressure
+      - mild_kidney_impairment
+    clinical_pathways:
+      - diabetes_management
+      - hypertension_control
+      - renal_function_monitoring
+
+  pediatric:
+    name: "Pediatric Respiratory Infection"
+    description: "Young child with respiratory infection - demonstrates pediatric care protocols"
+    category: "pediatrics"
+    severity: "moderate"
+    tags: ["pediatric", "respiratory", "infection"]
+    metadata:
+      age_group: "pediatric"
+      gender: "female"
+      primary_condition: "bronchiolitis"
+      expected_duration: "1-3_days"
+    hl7_message: |
+      MSH|^~\&|SYNTHEA|SYNTHEA|SIMULATOR|SIMULATOR|20240315140000||ADT^A01|456789|P|2.5.1
+      PID|1|23456|23456^^^SIMULATOR^MR~4444^^^SIMULATOR^SB|7777777777^^^USSSA^SS|WILLIAMS^EMMA^F||20210502|F|||789 PINE ST^^SEATTLE^WA^98101||206-555-9876|||F|NON|23456|345-67-8901
+      PV1|1|I|PEDS^303^03||||30303^LEE^ROBERT^T|||PEDIATRICS||||||ADM|A0|||||||||||||||||||||||||20240315140000
+      DG1|1|ICD-10-CM|J21.9|ACUTE BRONCHIOLITIS, UNSPECIFIED|20240315140000|A
+      OBX|1|NM|8867-4^HEART RATE^LN||128|/min|70-120|H|||F
+      OBX|2|NM|8480-6^SYSTOLIC BP^LN||95|mmHg|80-110|N|||F
+      OBX|3|NM|8462-4^DIASTOLIC BP^LN||60|mmHg|50-70|N|||F
+      OBX|4|NM|8310-5^BODY TEMPERATURE^LN||38.9|C|36.5-37.5|H|||F
+      OBX|5|NM|8867-4^RESPIRATORY RATE^LN||32|/min|20-30|H|||F
+      OBX|6|NM|2708-6^OXYGEN SATURATION^LN||94|%|95-100|L|||F
+    expected_findings:
+      - elevated_temperature
+      - tachycardia
+      - tachypnea
+      - hypoxemia
+    clinical_pathways:
+      - pediatric_respiratory_care
+      - oxygen_therapy
+      - supportive_care
+
+  surgical:
+    name: "Hip Replacement Surgery"
+    description: "Orthopedic patient for hip replacement - demonstrates surgical care pathway"
+    category: "orthopedics"
+    severity: "high"
+    tags: ["surgical", "orthopedics", "elective"]
+    metadata:
+      age_group: "elderly"
+      gender: "male"
+      primary_condition: "osteoarthritis_hip"
+      expected_duration: "3-7_days"
+    hl7_message: |
+      MSH|^~\&|SYNTHEA|SYNTHEA|SIMULATOR|SIMULATOR|20240410090000||ADT^A01|345678|P|2.5.1
+      PID|1|45678|45678^^^SIMULATOR^MR~5555^^^SIMULATOR^SB|6666666666^^^USSSA^SS|BROWN^ROBERT^M||19480615|M|||101 CEDAR LN^^DENVER^CO^80201||303-555-4321|||M|NON|45678|456-78-9012
+      PV1|1|I|ORTHO^404^04||||40404^RODRIGUEZ^CARLOS^J|||ORTHOPEDICS||||||ADM|A0|||||||||||||||||||||||||20240410090000
+      DG1|1|ICD-10-CM|M16.11|UNILATERAL PRIMARY OSTEOARTHRITIS, RIGHT HIP|20240410090000|A
+      PR1|1||81.51^TOTAL HIP REPLACEMENT^ICD9|20240411000000|ROUTINE|||01|40404^RODRIGUEZ^CARLOS^J
+      OBX|1|NM|8867-4^HEART RATE^LN||72|/min|60-100|N|||F
+      OBX|2|NM|8480-6^SYSTOLIC BP^LN||135|mmHg|90-130|H|||F
+      OBX|3|NM|8462-4^DIASTOLIC BP^LN||85|mmHg|60-80|H|||F
+      OBX|4|NM|718-7^HEMOGLOBIN^LN||13.2|g/dL|13.5-17.5|L|||F
+      OBX|5|NM|4544-3^HEMATOCRIT^LN||39.5|%|41-50|L|||F
+    expected_findings:
+      - mild_hypertension
+      - mild_anemia
+      - normal_heart_rate
+    clinical_pathways:
+      - pre_operative_assessment
+      - surgical_procedure
+      - post_operative_care
+      - rehabilitation
+
+  stroke:
+    name: "Acute Stroke Patient"
+    description: "Emergency stroke patient - demonstrates acute neurological care"
+    category: "neurology"
+    severity: "critical"
+    tags: ["stroke", "emergency", "neurology"]
+    metadata:
+      age_group: "elderly"
+      gender: "female"
+      primary_condition: "cerebral_infarction"
+      expected_duration: "5-10_days"
+    hl7_message: |
+      MSH|^~\&|SYNTHEA|SYNTHEA|SIMULATOR|SIMULATOR|20240505220000||ADT^A01|234567|P|2.5.1
+      PID|1|78901|78901^^^SIMULATOR^MR~6666^^^SIMULATOR^SB|5555555555^^^USSSA^SS|DAVIS^PATRICIA^F||19520830|F|||222 MAPLE AVE^^MIAMI^FL^33101||305-555-8765|||F|NON|78901|567-89-0123
+      PV1|1|E|ER^505^05||||50505^THOMPSON^JAMES^P|||EMERGENCY||||||ADM|A0|||||||||||||||||||||||||20240505220000
+      DG1|1|ICD-10-CM|I63.9|CEREBRAL INFARCTION, UNSPECIFIED|20240505220000|A
+      OBX|1|NM|8867-4^HEART RATE^LN||92|/min|60-100|N|||F
+      OBX|2|NM|8480-6^SYSTOLIC BP^LN||182|mmHg|90-130|HH|||F
+      OBX|3|NM|8462-4^DIASTOLIC BP^LN||104|mmHg|60-80|HH|||F
+      OBX|4|ST|8339-4^NIHSS SCORE^LN||14||0-5|HH|||F
+      OBX|5|NM|2345-7^GLUCOSE^LN||156|mg/dL|70-110|H|||F
+      OBX|6|NM|2160-0^CREATININE^LN||0.9|mg/dL|0.6-1.2|N|||F
+    expected_findings:
+      - severe_hypertension
+      - elevated_nihss_score
+      - hyperglycemia
+      - acute_neurological_deficit
+    clinical_pathways:
+      - stroke_protocol
+      - neurological_assessment
+      - thrombolytic_therapy
+      - intensive_monitoring
+
+# Configuration validation schema
+validation:
+  required_fields:
+    - name
+    - description
+    - category
+    - severity
+    - hl7_message
+  
+  severity_levels:
+    - low
+    - moderate
+    - high
+    - critical
+  
+  categories:
+    - cardiology
+    - endocrinology
+    - pediatrics
+    - orthopedics
+    - neurology
+    - emergency
+    - oncology
+    - psychiatry
+    - dermatology
+    - general_medicine
+  
+  age_groups:
+    - infant
+    - pediatric
+    - adolescent
+    - adult
+    - elderly
+
+# Data format guidelines
+data_format:
+  hl7_requirements:
+    - Must include MSH (Message Header) segment
+    - Must include PID (Patient Identification) segment
+    - Should include PV1 (Patient Visit) segment for admission info
+    - May include DG1 (Diagnosis) segments for clinical conditions
+    - May include OBX (Observation Result) segments for lab values
+    - May include PR1 (Procedures) segments for surgical procedures
+  
+  field_separators:
+    field: "|"
+    component: "^"
+    repetition: "~"
+    escape: "\\"
+    subcomponent: "&"
+  
+  encoding_guidelines:
+    - Use UTF-8 encoding for all text
+    - Ensure proper HL7 field separator usage
+    - Validate segment structure before simulation
+    - Include appropriate null handling for empty fields

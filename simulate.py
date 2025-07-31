@@ -5,7 +5,8 @@ import argparse
 from crew import HealthcareSimulationCrew
 from llm_config import create_llm_config, get_available_backends, LLMBackend
 from datetime import datetime
-from sample_data.sample_messages import SAMPLE_MESSAGES, list_scenarios, get_message
+from sample_data.sample_messages import SAMPLE_MESSAGES
+from scenario_loader import get_scenario_loader, get_message, list_scenarios
 import logging
 from typing import Any, Optional
 
@@ -95,8 +96,17 @@ def main() -> None:
         logger.info(f"Using sample scenario: {args.scenario}")
     
     if not hl7_message:
-        hl7_message = SAMPLE_MESSAGES["chest_pain"]  # Default scenario
-        logger.info("Using default chest pain scenario")
+        # Try to get message using new scenario loader
+        loader = get_scenario_loader()
+        try:
+            # Set fallback module for backward compatibility
+            import sample_data.sample_messages as sample_messages
+            loader.fallback_module = sample_messages
+        except ImportError:
+            pass
+        
+        hl7_message = loader.get_hl7_message("chest_pain")  # Default scenario
+        logger.info("Using default chest pain scenario via scenario loader")
     
     # Run the simulation with the HL7 message
     try:

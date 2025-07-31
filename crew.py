@@ -4,6 +4,7 @@ from crewai.project import CrewBase, agent, task, crew, before_kickoff
 from hl7apy import parser as hl7_parser
 from tools.healthcare_tools import HealthcareTools
 from llm_config import LLMConfig, create_llm_config
+from config_loader import get_config_loader
 import json
 import logging
 
@@ -36,12 +37,10 @@ class HealthcareSimulationCrew:
         self._dynamic_agents = {}
         self._dynamic_tasks = {}
         
-        # Load configuration files
-        import yaml
-        with open(self.agents_config, 'r') as f:
-            self._agents_config = yaml.safe_load(f)
-        with open(self.tasks_config, 'r') as f:
-            self._tasks_config = yaml.safe_load(f)
+        # Load configuration files using the enhanced loader  
+        config_loader = get_config_loader()
+        self._agents_config, self._tasks_config = config_loader.load_configurations()
+        logger.info(f"Loaded {len(self._agents_config)} agents and {len(self._tasks_config)} tasks")
 
     def _extract_observations(self, parsed_message) -> List[Dict[str, Any]]:
         """Extract observation/lab results from OBX segments."""
