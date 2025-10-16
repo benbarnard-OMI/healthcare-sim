@@ -2,6 +2,19 @@ from typing import Dict, Any, List, Optional
 from crewai.tools import BaseTool
 from datetime import datetime, timedelta
 from pydantic import BaseModel, Field
+import sys
+import os
+
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
+try:
+    from hl7_validator import HL7Validator, ValidationLevel, validate_hl7_message
+    from fhir_to_hl7_converter import FHIRToHL7Converter
+    HL7_FHIR_AVAILABLE = True
+except ImportError as e:
+    print(f"HL7/FHIR modules not available: {e}")
+    HL7_FHIR_AVAILABLE = False
 
 
 class ClinicalGuidelinesInput(BaseModel):
@@ -20,6 +33,19 @@ class AppointmentSchedulerInput(BaseModel):
     duration_minutes: int = Field(default=30, description="Duration of appointment in minutes")
     preferred_date: Optional[str] = Field(default=None, description="Preferred date for appointment (YYYY-MM-DD)")
     patient_priority: str = Field(default="routine", description="Priority level (urgent, high, routine, low)")
+
+
+class HL7ValidationInput(BaseModel):
+    """Input schema for HL7 validation tool."""
+    hl7_message: str = Field(..., description="The HL7 message to validate")
+    validation_level: str = Field(default="standard", description="Validation level: basic, standard, strict, compliance")
+
+
+class FHIRGenerationInput(BaseModel):
+    """Input schema for FHIR generation tool."""
+    patient_data: Dict[str, Any] = Field(..., description="Patient data to generate FHIR from")
+    output_format: str = Field(default="bundle", description="Output format: bundle, individual_resources, json")
+    generate_hl7: bool = Field(default=False, description="Whether to also generate HL7 message from FHIR")
 
 
 class ClinicalGuidelinesTool(BaseTool):
@@ -842,6 +868,604 @@ class AppointmentSchedulerTool(BaseTool):
         return "\n".join(reminders) if reminders else "• Day of appointment: Check-in reminder"
 
 
+class HL7ValidationTool(BaseTool):
+    """Tool for validating HL7 messages with comprehensive error reporting."""
+    name: str = "HL7 Message Validator"
+    description: str = "Validate HL7 v2.x messages for format compliance, data integrity, and business rules"
+    args_schema: type[BaseModel] = HL7ValidationInput
+
+    def _run(self, hl7_message: str, validation_level: str = "standard") -> str:
+        """
+        Validate an HL7 message with comprehensive error reporting.
+        Args:
+            hl7_message: The HL7 message to validate
+            validation_level: Validation level (basic, standard, strict, compliance)
+        Returns:
+            String containing detailed validation results
+        """
+        if not HL7_FHIR_AVAILABLE:
+            return "HL7 validation tools are not available. Please ensure hl7_validator module is installed."
+        
+        if not hl7_message or not hl7_message.strip():
+            return "ERROR: Empty or null HL7 message provided for validation."
+        
+        try:
+            # Map validation level string to enum
+            level_map = {
+                "basic": ValidationLevel.BASIC,
+                "standard": ValidationLevel.STANDARD,
+                "strict": ValidationLevel.STRICT,
+                "compliance": ValidationLevel.COMPLIANCE
+            }
+            
+            validation_level_enum = level_map.get(validation_level.lower(), ValidationLevel.STANDARD)
+            
+            # Perform validation
+            result = validate_hl7_message(hl7_message, validation_level_enum)
+            
+            # Format results
+            output = self._format_validation_results(result)
+            return output
+            
+        except Exception as e:
+            return f"HL7 validation failed with error: {str(e)}"
+    
+    def _format_validation_results(self, result: Dict[str, Any]) -> str:
+        """Format validation results into readable string."""
+        output = []
+        
+        # Header
+        status_emoji = {
+            "VALID": "✅",
+            "WARNING": "⚠️",
+            "ERROR": "❌",
+            "CRITICAL": "🚨"
+        }
+        
+        status = result.get('status', 'UNKNOWN')
+        emoji = status_emoji.get(status, "❓")
+        
+        output.append(f"{emoji} HL7 MESSAGE VALIDATION RESULTS")
+        output.append("=" * 50)
+        output.append(f"Status: {status}")
+        output.append(f"Total Issues: {result.get('total_issues', 0)}")
+        output.append(f"Validation Level: {result.get('validation_level', 'Unknown')}")
+        output.append("")
+        
+        # Severity counts
+        severity_counts = result.get('severity_counts', {})
+        if severity_counts:
+            output.append("ISSUE BREAKDOWN:")
+            for severity, count in severity_counts.items():
+                if count > 0:
+                    output.append(f"  {severity}: {count}")
+            output.append("")
+        
+        # Issues details
+        issues = result.get('issues', [])
+        if issues:
+            output.append("DETAILED ISSUES:")
+            output.append("-" * 30)
+            
+            for i, issue in enumerate(issues, 1):
+                severity = issue.get('severity', 'UNKNOWN')
+                segment = issue.get('segment_type', 'UNKNOWN')
+                field = issue.get('field_number', 'N/A')
+                message = issue.get('message', 'No message')
+                details = issue.get('details', 'No details')
+                suggested_fix = issue.get('suggested_fix', 'No suggestion')
+                
+                output.append(f"{i}. [{severity}] {segment}")
+                if field != 'N/A':
+                    output.append(f"   Field: {field}")
+                output.append(f"   Message: {message}")
+                output.append(f"   Details: {details}")
+                if suggested_fix and suggested_fix != 'No suggestion':
+                    output.append(f"   Fix: {suggested_fix}")
+                output.append("")
+        else:
+            output.append("✅ No validation issues found!")
+            output.append("")
+        
+        # Summary
+        if result.get('needs_attention', False):
+            output.append("⚠️  ATTENTION REQUIRED:")
+            output.append("This message has critical errors or issues that need to be addressed.")
+        elif result.get('is_valid', False):
+            output.append("✅ VALIDATION PASSED:")
+            output.append("This HL7 message is valid and ready for use.")
+        else:
+            output.append("❌ VALIDATION FAILED:")
+            output.append("This HL7 message has errors that prevent proper processing.")
+        
+        return "\n".join(output)
+
+
+class FHIRGenerationTool(BaseTool):
+    """Tool for generating FHIR R4 resources directly from patient data."""
+    name: str = "FHIR Message Generator"
+    description: str = "Generate FHIR R4 resources directly from patient data, with optional HL7 conversion"
+    args_schema: type[BaseModel] = FHIRGenerationInput
+
+    def _run(self, patient_data: Dict[str, Any], output_format: str = "bundle", generate_hl7: bool = False) -> str:
+        """
+        Generate FHIR resources from patient data.
+        Args:
+            patient_data: Patient data dictionary containing demographics, conditions, observations, etc.
+            output_format: Output format (bundle, individual_resources, json)
+            generate_hl7: Whether to also generate HL7 message from FHIR
+        Returns:
+            String containing FHIR resources and optionally HL7 message
+        """
+        if not HL7_FHIR_AVAILABLE:
+            return "FHIR generation tools are not available. Please ensure required modules are installed."
+        
+        if not patient_data:
+            return "ERROR: No patient data provided for FHIR generation."
+        
+        try:
+            # Generate FHIR resources
+            fhir_resources = self._generate_fhir_resources(patient_data)
+            
+            if not fhir_resources:
+                return "ERROR: Failed to generate FHIR resources from patient data."
+            
+            # Create FHIR Bundle
+            bundle = self._create_fhir_bundle(fhir_resources)
+            
+            # Optionally generate HL7 from FHIR
+            hl7_message = None
+            if generate_hl7:
+                hl7_message = self._generate_hl7_from_fhir(bundle)
+            
+            # Format output based on requested format
+            if output_format.lower() == "bundle":
+                return self._format_bundle_output(bundle, hl7_message)
+            elif output_format.lower() == "individual_resources":
+                return self._format_individual_resources_output(fhir_resources, hl7_message)
+            elif output_format.lower() == "json":
+                return self._format_json_output(fhir_resources, bundle, hl7_message)
+            else:
+                return self._format_summary_output(fhir_resources, bundle, hl7_message)
+                
+        except Exception as e:
+            return f"FHIR generation failed with error: {str(e)}"
+    
+    def _generate_fhir_resources(self, patient_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Generate FHIR resources from patient data."""
+        resources = []
+        
+        # Create Patient resource
+        patient_resource = self._create_patient_resource(patient_data)
+        resources.append(patient_resource)
+        
+        # Create Encounter resource if visit data exists
+        if patient_data.get('visit_info'):
+            encounter_resource = self._create_encounter_resource(patient_data, patient_resource)
+            if encounter_resource:
+                resources.append(encounter_resource)
+        
+        # Create Condition resources from diagnoses
+        if patient_data.get('diagnoses'):
+            condition_resources = self._create_condition_resources(patient_data, patient_resource)
+            resources.extend(condition_resources)
+        
+        # Create Observation resources from observations
+        if patient_data.get('observations'):
+            encounter_ref = None
+            if patient_data.get('visit_info'):
+                encounter_ref = next((r for r in resources if r['resourceType'] == 'Encounter'), None)
+            observation_resources = self._create_observation_resources(patient_data, patient_resource, encounter_ref)
+            resources.extend(observation_resources)
+        
+        # Create Procedure resources from procedures
+        if patient_data.get('procedures'):
+            encounter_ref = None
+            if patient_data.get('visit_info'):
+                encounter_ref = next((r for r in resources if r['resourceType'] == 'Encounter'), None)
+            procedure_resources = self._create_procedure_resources(patient_data, patient_resource, encounter_ref)
+            resources.extend(procedure_resources)
+        
+        return resources
+    
+    def _create_patient_resource(self, patient_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create FHIR Patient resource."""
+        import uuid
+        
+        patient_id = patient_data.get('id', str(uuid.uuid4()))
+        
+        # Build name
+        name = {
+            'use': 'official',
+            'family': patient_data.get('family_name', 'Unknown'),
+            'given': [patient_data.get('given_name', 'Unknown')]
+        }
+        
+        # Build identifier
+        identifier = {
+            'use': 'usual',
+            'type': {
+                'coding': [{
+                    'system': 'http://terminology.hl7.org/CodeSystem/v2-0203',
+                    'code': 'MR',
+                    'display': 'Medical Record Number'
+                }]
+            },
+            'value': patient_id
+        }
+        
+        # Build telecom
+        telecom = []
+        if patient_data.get('phone'):
+            telecom.append({
+                'system': 'phone',
+                'value': patient_data['phone'],
+                'use': 'home'
+            })
+        
+        # Build address
+        address = []
+        if patient_data.get('address'):
+            address.append(patient_data['address'])
+        
+        patient_resource = {
+            'resourceType': 'Patient',
+            'id': patient_id,
+            'identifier': [identifier],
+            'name': [name],
+            'gender': patient_data.get('gender', 'unknown'),
+            'telecom': telecom,
+            'address': address
+        }
+        
+        if patient_data.get('birth_date'):
+            patient_resource['birthDate'] = patient_data['birth_date']
+        
+        return patient_resource
+    
+    def _create_encounter_resource(self, patient_data: Dict[str, Any], patient_resource: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Create FHIR Encounter resource."""
+        import uuid
+        
+        visit_info = patient_data.get('visit_info', {})
+        if not visit_info:
+            return None
+        
+        encounter_id = str(uuid.uuid4())
+        
+        encounter_resource = {
+            'resourceType': 'Encounter',
+            'id': encounter_id,
+            'status': 'finished',
+            'class': {
+                'system': 'http://terminology.hl7.org/CodeSystem/v3-ActCode',
+                'code': visit_info.get('patient_class', 'inpatient'),
+                'display': visit_info.get('patient_class', 'inpatient').title()
+            },
+            'subject': {
+                'reference': f"Patient/{patient_resource['id']}"
+            }
+        }
+        
+        if visit_info.get('assigned_patient_location'):
+            encounter_resource['location'] = [{
+                'location': {
+                    'display': visit_info['assigned_patient_location']
+                }
+            }]
+        
+        if visit_info.get('admit_date_time'):
+            encounter_resource['period'] = {
+                'start': visit_info['admit_date_time']
+            }
+        
+        return encounter_resource
+    
+    def _create_condition_resources(self, patient_data: Dict[str, Any], patient_resource: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Create FHIR Condition resources from diagnoses."""
+        import uuid
+        
+        conditions = []
+        diagnoses = patient_data.get('diagnoses', [])
+        
+        for diagnosis in diagnoses:
+            condition_id = str(uuid.uuid4())
+            
+            # Build code
+            code_data = None
+            if diagnosis.get('code'):
+                code_data = {
+                    'coding': [{
+                        'system': 'http://hl7.org/fhir/sid/icd-10-cm',
+                        'code': diagnosis['code'],
+                        'display': diagnosis.get('description', diagnosis['code'])
+                    }]
+                }
+            
+            condition_resource = {
+                'resourceType': 'Condition',
+                'id': condition_id,
+                'subject': {
+                    'reference': f"Patient/{patient_resource['id']}"
+                },
+                'clinicalStatus': {
+                    'coding': [{
+                        'system': 'http://terminology.hl7.org/CodeSystem/condition-clinical',
+                        'code': 'active',
+                        'display': 'Active'
+                    }]
+                },
+                'verificationStatus': {
+                    'coding': [{
+                        'system': 'http://terminology.hl7.org/CodeSystem/condition-ver-status',
+                        'code': 'confirmed',
+                        'display': 'Confirmed'
+                    }]
+                }
+            }
+            
+            if code_data:
+                condition_resource['code'] = code_data
+            
+            if diagnosis.get('date'):
+                condition_resource['onsetDateTime'] = diagnosis['date']
+            
+            conditions.append(condition_resource)
+        
+        return conditions
+    
+    def _create_observation_resources(self, patient_data: Dict[str, Any], patient_resource: Dict[str, Any], encounter_resource: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Create FHIR Observation resources from observations."""
+        import uuid
+        
+        observations = []
+        obs_data = patient_data.get('observations', [])
+        
+        for obs in obs_data:
+            observation_id = str(uuid.uuid4())
+            
+            # Build code
+            code_data = None
+            if obs.get('observation_identifier'):
+                code_data = {
+                    'coding': [{
+                        'system': 'http://loinc.org',
+                        'code': obs['observation_identifier'],
+                        'display': obs.get('observation_description', obs['observation_identifier'])
+                    }]
+                }
+            
+            # Build value
+            value_data = None
+            if obs.get('observation_value'):
+                value = obs['observation_value']
+                value_type = obs.get('value_type', 'ST')
+                
+                if value_type in ['NM', 'SN']:  # Numeric
+                    try:
+                        numeric_value = float(value)
+                        value_data = {
+                            'valueQuantity': {
+                                'value': numeric_value,
+                                'unit': obs.get('units', '')
+                            }
+                        }
+                    except ValueError:
+                        value_data = {
+                            'valueString': value
+                        }
+                else:  # String
+                    value_data = {
+                        'valueString': value
+                    }
+            
+            # Build reference range
+            reference_range = None
+            if obs.get('reference_range'):
+                range_parts = obs['reference_range'].split('-')
+                if len(range_parts) == 2:
+                    try:
+                        low = float(range_parts[0])
+                        high = float(range_parts[1])
+                        reference_range = [{
+                            'low': {'value': low},
+                            'high': {'value': high}
+                        }]
+                    except ValueError:
+                        pass
+            
+            observation_resource = {
+                'resourceType': 'Observation',
+                'id': observation_id,
+                'status': 'final',
+                'subject': {
+                    'reference': f"Patient/{patient_resource['id']}"
+                }
+            }
+            
+            if encounter_resource:
+                observation_resource['encounter'] = {
+                    'reference': f"Encounter/{encounter_resource['id']}"
+                }
+            
+            if code_data:
+                observation_resource['code'] = code_data
+            
+            if value_data:
+                observation_resource.update(value_data)
+            
+            if reference_range:
+                observation_resource['referenceRange'] = reference_range
+            
+            observations.append(observation_resource)
+        
+        return observations
+    
+    def _create_procedure_resources(self, patient_data: Dict[str, Any], patient_resource: Dict[str, Any], encounter_resource: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Create FHIR Procedure resources from procedures."""
+        import uuid
+        
+        procedures = []
+        proc_data = patient_data.get('procedures', [])
+        
+        for proc in proc_data:
+            procedure_id = str(uuid.uuid4())
+            
+            # Build code
+            code_data = None
+            if proc.get('procedure_code'):
+                code_data = {
+                    'coding': [{
+                        'system': 'http://www.ama-assn.org/go/cpt',
+                        'code': proc['procedure_code'],
+                        'display': proc.get('procedure_description', proc['procedure_code'])
+                    }]
+                }
+            
+            procedure_resource = {
+                'resourceType': 'Procedure',
+                'id': procedure_id,
+                'status': 'completed',
+                'subject': {
+                    'reference': f"Patient/{patient_resource['id']}"
+                }
+            }
+            
+            if encounter_resource:
+                procedure_resource['encounter'] = {
+                    'reference': f"Encounter/{encounter_resource['id']}"
+                }
+            
+            if code_data:
+                procedure_resource['code'] = code_data
+            
+            if proc.get('procedure_date_time'):
+                procedure_resource['performedDateTime'] = proc['procedure_date_time']
+            
+            if proc.get('surgeon_name'):
+                procedure_resource['performer'] = [{
+                    'actor': {
+                        'display': proc['surgeon_name']
+                    }
+                }]
+            
+            procedures.append(procedure_resource)
+        
+        return procedures
+    
+    def _create_fhir_bundle(self, resources: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Create FHIR Bundle containing all resources."""
+        import uuid
+        
+        bundle_id = str(uuid.uuid4())
+        
+        entries = []
+        for resource in resources:
+            entry = {
+                'fullUrl': f"urn:uuid:{resource['id']}",
+                'resource': resource
+            }
+            entries.append(entry)
+        
+        bundle = {
+            'resourceType': 'Bundle',
+            'id': bundle_id,
+            'type': 'collection',
+            'timestamp': datetime.now().isoformat(),
+            'entry': entries
+        }
+        
+        return bundle
+    
+    def _generate_hl7_from_fhir(self, bundle: Dict[str, Any]) -> Optional[str]:
+        """Generate HL7 message from FHIR Bundle using existing converter."""
+        try:
+            converter = FHIRToHL7Converter()
+            hl7_messages = converter.convert_bundle_to_hl7(bundle)
+            return hl7_messages[0] if hl7_messages else None
+        except Exception as e:
+            print(f"HL7 generation from FHIR failed: {e}")
+            return None
+    
+    def _format_bundle_output(self, bundle: Dict[str, Any], hl7_message: Optional[str]) -> str:
+        """Format output as FHIR Bundle with optional HL7."""
+        import json
+        
+        output = []
+        output.append("🎯 FHIR BUNDLE GENERATED")
+        output.append("=" * 40)
+        output.append(json.dumps(bundle, indent=2))
+        
+        if hl7_message:
+            output.append("\n\n🔗 CORRESPONDING HL7 MESSAGE:")
+            output.append("=" * 40)
+            output.append(hl7_message)
+        
+        return "\n".join(output)
+    
+    def _format_individual_resources_output(self, resources: List[Dict[str, Any]], hl7_message: Optional[str]) -> str:
+        """Format output as individual FHIR resources."""
+        import json
+        
+        output = []
+        output.append("🎯 FHIR RESOURCES GENERATED")
+        output.append("=" * 40)
+        
+        for resource in resources:
+            output.append(f"\n=== {resource['resourceType']} ===")
+            output.append(json.dumps(resource, indent=2))
+        
+        if hl7_message:
+            output.append("\n\n🔗 CORRESPONDING HL7 MESSAGE:")
+            output.append("=" * 40)
+            output.append(hl7_message)
+        
+        return "\n".join(output)
+    
+    def _format_json_output(self, resources: List[Dict[str, Any]], bundle: Dict[str, Any], hl7_message: Optional[str]) -> str:
+        """Format output as JSON."""
+        import json
+        
+        result = {
+            'success': True,
+            'fhir_resources': resources,
+            'bundle': bundle,
+            'hl7_message': hl7_message
+        }
+        
+        return json.dumps(result, indent=2)
+    
+    def _format_summary_output(self, resources: List[Dict[str, Any]], bundle: Dict[str, Any], hl7_message: Optional[str]) -> str:
+        """Format output as summary."""
+        output = []
+        
+        output.append("🎯 FHIR GENERATION RESULTS")
+        output.append("=" * 40)
+        output.append(f"Status: SUCCESS")
+        output.append(f"Resources Generated: {len(resources)}")
+        output.append(f"Bundle ID: {bundle.get('id', 'Unknown')}")
+        
+        # Resource breakdown
+        resource_types = {}
+        for resource in resources:
+            resource_type = resource.get('resourceType', 'Unknown')
+            resource_types[resource_type] = resource_types.get(resource_type, 0) + 1
+        
+        if resource_types:
+            output.append("\nRESOURCE BREAKDOWN:")
+            for resource_type, count in resource_types.items():
+                output.append(f"  {resource_type}: {count}")
+        
+        if hl7_message:
+            output.append(f"\n🔗 HL7 MESSAGE GENERATED: {len(hl7_message)} characters")
+            output.append("First 200 characters:")
+            output.append(hl7_message[:200] + "..." if len(hl7_message) > 200 else hl7_message)
+        else:
+            output.append("\nℹ️  No HL7 message generated (generate_hl7=False)")
+        
+        return "\n".join(output)
+
+
 class HealthcareTools:
     """Custom tools for healthcare simulation agents - backward compatibility wrapper"""
     
@@ -859,3 +1483,13 @@ class HealthcareTools:
     def appointment_scheduler_tool() -> AppointmentSchedulerTool:
         """Creates a tool for scheduling patient appointments."""
         return AppointmentSchedulerTool()
+    
+    @staticmethod
+    def hl7_validation_tool() -> HL7ValidationTool:
+        """Creates a tool for validating HL7 messages."""
+        return HL7ValidationTool()
+    
+    @staticmethod
+    def fhir_generation_tool() -> FHIRGenerationTool:
+        """Creates a tool for generating FHIR resources from patient data."""
+        return FHIRGenerationTool()
