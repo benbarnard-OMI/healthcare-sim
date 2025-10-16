@@ -2,6 +2,19 @@ from typing import Dict, Any, List, Optional
 from crewai.tools import BaseTool
 from datetime import datetime, timedelta
 from pydantic import BaseModel, Field
+import sys
+import os
+
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
+try:
+    from hl7_validator import HL7Validator, ValidationLevel, validate_hl7_message
+    from fhir_converter import HL7ToFHIRConverter, convert_hl7_to_fhir
+    HL7_FHIR_AVAILABLE = True
+except ImportError as e:
+    print(f"HL7/FHIR modules not available: {e}")
+    HL7_FHIR_AVAILABLE = False
 
 
 class ClinicalGuidelinesInput(BaseModel):
@@ -20,6 +33,18 @@ class AppointmentSchedulerInput(BaseModel):
     duration_minutes: int = Field(default=30, description="Duration of appointment in minutes")
     preferred_date: Optional[str] = Field(default=None, description="Preferred date for appointment (YYYY-MM-DD)")
     patient_priority: str = Field(default="routine", description="Priority level (urgent, high, routine, low)")
+
+
+class HL7ValidationInput(BaseModel):
+    """Input schema for HL7 validation tool."""
+    hl7_message: str = Field(..., description="The HL7 message to validate")
+    validation_level: str = Field(default="standard", description="Validation level: basic, standard, strict, compliance")
+
+
+class FHIRGenerationInput(BaseModel):
+    """Input schema for FHIR generation tool."""
+    hl7_message: str = Field(..., description="The HL7 message to convert to FHIR")
+    output_format: str = Field(default="bundle", description="Output format: bundle, individual_resources, json")
 
 
 class ClinicalGuidelinesTool(BaseTool):
