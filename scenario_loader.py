@@ -2,7 +2,8 @@
 Scenario Loader Module
 
 This module provides functionality to load patient scenarios from both YAML configuration
-files and Python modules, with validation and error handling.
+files and Python modules, with validation and error handling. It also integrates with
+Synthea-generated scenarios for realistic synthetic patient data.
 """
 
 import yaml
@@ -14,6 +15,14 @@ from pathlib import Path
 
 # Setup logging
 logger = logging.getLogger(__name__)
+
+# Import Synthea integration (optional)
+try:
+    from synthea_scenario_loader import SyntheaScenarioLoader
+    SYNTHEA_AVAILABLE = True
+except ImportError:
+    SYNTHEA_AVAILABLE = False
+    logger.warning("Synthea integration not available. Install synthea_scenario_loader for realistic patient data.")
 
 @dataclass
 class ScenarioMetadata:
@@ -45,25 +54,39 @@ class ScenarioLoader:
     """
     Loads and validates patient scenarios from YAML configuration files
     and provides backward compatibility with Python-based scenarios.
+    Also integrates with Synthea for realistic synthetic patient data.
     """
     
-    def __init__(self, config_path: str = None, fallback_module = None):
+    def __init__(self, config_path: str = None, fallback_module = None, enable_synthea: bool = True):
         """
         Initialize the scenario loader.
         
         Args:
             config_path: Path to the YAML scenarios configuration file
             fallback_module: Python module containing SAMPLE_MESSAGES (for backward compatibility)
+            enable_synthea: Whether to enable Synthea integration for realistic patient data
         """
         self.config_path = config_path or os.path.join(os.path.dirname(__file__), 'scenarios.yaml')
         self.fallback_module = fallback_module
+        self.enable_synthea = enable_synthea and SYNTHEA_AVAILABLE
         self._scenarios: Dict[str, PatientScenario] = {}
         self._validation_config: Dict[str, Any] = {}
         self._loaded = False
+        
+        # Initialize Synthea loader if available
+        self._synthea_loader = None
+        if self.enable_synthea:
+            try:
+                self._synthea_loader = SyntheaScenarioLoader()
+                logger.info("Synthea integration enabled")
+            except Exception as e:
+                logger.warning(f"Failed to initialize Synthea loader: {e}")
+                self.enable_synthea = False
     
     def load_scenarios(self) -> Dict[str, PatientScenario]:
         """
         Load scenarios from YAML configuration with fallback to Python module.
+        Also loads Synthea-generated scenarios if available.
         
         Returns:
             Dictionary of scenario_id -> PatientScenario objects
@@ -80,6 +103,14 @@ class ScenarioLoader:
                 logger.warning(f"YAML config file not found at {self.config_path}")
         except Exception as e:
             logger.error(f"Failed to load scenarios from YAML: {str(e)}")
+        
+        # Load Synthea scenarios if available
+        if self.enable_synthea and self._synthea_loader:
+            try:
+                self._load_synthea_scenarios()
+                logger.info(f"Loaded Synthea scenarios, total: {len(self._scenarios)} scenarios")
+            except Exception as e:
+                logger.error(f"Failed to load Synthea scenarios: {str(e)}")
         
         # Fallback to Python module if no YAML scenarios loaded or for backward compatibility
         if not self._scenarios and self.fallback_module:
@@ -184,6 +215,49 @@ class ScenarioLoader:
                 continue
         
         return scenarios
+    
+    def _load_synthea_scenarios(self) -> None:
+        """Load Synthea-generated scenarios."""
+        if not self._synthea_loader:
+            return
+        
+        # Get all Synthea scenarios
+        synthea_scenarios = self._synthea_loader.scenarios
+        
+        for scenario_id, synthea_scenario in synthea_scenarios.items():
+            try:
+                # Convert Synthea scenario to PatientScenario
+                scenario = self._create_scenario_from_synthea(scenario_id, synthea_scenario)
+                self._scenarios[scenario_id] = scenario
+            except Exception as e:
+                logger.error(f"Failed to convert Synthea scenario '{scenario_id}': {str(e)}")
+                continue
+    
+    def _create_scenario_from_synthea(self, scenario_id: str, synthea_scenario: Dict[str, Any]) -> PatientScenario:
+        """Create a PatientScenario object from Synthea scenario data."""
+        metadata_data = synthea_scenario.get('metadata', {})
+        metadata = ScenarioMetadata(
+            age_group=metadata_data.get('age_group', 'unknown'),
+            gender=metadata_data.get('gender', 'unknown'),
+            primary_condition=metadata_data.get('primary_condition', 'unknown'),
+            expected_duration=metadata_data.get('expected_duration', 'unknown')
+        )
+        
+        # Create scenario object
+        scenario = PatientScenario(
+            id=scenario_id,
+            name=synthea_scenario.get('name', scenario_id),
+            description=synthea_scenario.get('description', ''),
+            category=synthea_scenario.get('category', 'general_medicine'),
+            severity=synthea_scenario.get('severity', 'moderate'),
+            tags=synthea_scenario.get('tags', []),
+            metadata=metadata,
+            hl7_message=synthea_scenario.get('hl7_message', '').strip(),
+            expected_findings=synthea_scenario.get('expected_findings'),
+            clinical_pathways=synthea_scenario.get('clinical_pathways')
+        )
+        
+        return scenario
     
     def _format_scenario_name(self, scenario_id: str) -> str:
         """Convert scenario_id to a readable name."""
@@ -370,6 +444,67 @@ class ScenarioLoader:
             errors.append(f"Failed to load scenarios for validation: {str(e)}")
         
         return errors
+    
+    def generate_synthea_scenarios(self, 
+                                  num_patients: int = 20,
+                                  age_min: int = 0,
+                                  age_max: int = 100,
+                                  state: str = "Massachusetts",
+                                  city: str = "Boston",
+                                  seed: Optional[int] = None) -> Dict[str, Any]:
+        """
+        Generate new Synthea scenarios and integrate them into the simulation.
+        
+        Args:
+            num_patients: Number of patients to generate
+            age_min: Minimum age for generated patients
+            age_max: Maximum age for generated patients
+            state: US state for patient demographics
+            city: City for patient demographics
+            seed: Random seed for reproducible results
+            
+        Returns:
+            Dictionary containing generation results and scenario metadata
+        """
+        if not self.enable_synthea or not self._synthea_loader:
+            raise RuntimeError("Synthea integration not available")
+        
+        # Generate scenarios using Synthea loader
+        result = self._synthea_loader.generate_synthea_scenarios(
+            num_patients=num_patients,
+            age_min=age_min,
+            age_max=age_max,
+            state=state,
+            city=city,
+            seed=seed
+        )
+        
+        # Refresh our scenarios to include the new ones
+        self._loaded = False
+        self.load_scenarios()
+        
+        return result
+    
+    def get_synthea_scenarios(self) -> List[str]:
+        """Get all Synthea-generated scenarios."""
+        if not self.enable_synthea or not self._synthea_loader:
+            return []
+        
+        return self._synthea_loader.get_synthea_scenarios()
+    
+    def export_synthea_scenario(self, scenario_id: str, output_file: str):
+        """Export a Synthea scenario to a file."""
+        if not self.enable_synthea or not self._synthea_loader:
+            raise RuntimeError("Synthea integration not available")
+        
+        self._synthea_loader.export_scenario(scenario_id, output_file)
+    
+    def export_all_synthea_scenarios(self, output_dir: str):
+        """Export all Synthea scenarios to individual files."""
+        if not self.enable_synthea or not self._synthea_loader:
+            raise RuntimeError("Synthea integration not available")
+        
+        self._synthea_loader.export_all_synthea_scenarios(output_dir)
 
 
 # Global scenario loader instance (initialized lazily)
