@@ -505,9 +505,8 @@ class HealthcareSimulationCrew:
         # Add dynamic agents
         for agent_name, agent_data in self._dynamic_agents.items():
             dynamic_agent = Agent(
-                config=agent_data['config'],
-                tools=agent_data['tools'],
-                verbose=True
+                **agent_data['config'],
+                tools=agent_data['tools']
             )
             core_agents.append(dynamic_agent)
         
@@ -526,7 +525,7 @@ class HealthcareSimulationCrew:
         
         # Add dynamic tasks
         for task_name, task_config in self._dynamic_tasks.items():
-            dynamic_task = Task(config=task_config)
+            dynamic_task = Task(**task_config)
             core_tasks.append(dynamic_task)
         
         return core_tasks
@@ -547,16 +546,14 @@ class HealthcareSimulationCrew:
     def data_ingestion_agent(self) -> Agent:
         """Creates the HL7 Data Ingestion Specialist agent."""
         return Agent(
-            config=self._agents_config['data_ingestion_agent'],
-            verbose=True
+            **self._agents_config['data_ingestion_agent']
         )
 
     @agent
     def diagnostics_agent(self) -> Agent:
         """Creates the Clinical Diagnostics Analyst agent."""
         return Agent(
-            config=self._agents_config['diagnostics_agent'],
-            verbose=True,
+            **self._agents_config['diagnostics_agent'],
             tools=[self.healthcare_tools.clinical_guidelines_tool()]
         )
 
@@ -564,8 +561,7 @@ class HealthcareSimulationCrew:
     def treatment_planner(self) -> Agent:
         """Creates the Treatment Planning Specialist agent."""
         return Agent(
-            config=self._agents_config['treatment_planner'],
-            verbose=True,
+            **self._agents_config['treatment_planner'],
             tools=[
                 self.healthcare_tools.clinical_guidelines_tool(),
                 self.healthcare_tools.medication_interaction_tool()
@@ -575,56 +571,58 @@ class HealthcareSimulationCrew:
     @agent
     def care_coordinator(self) -> Agent:
         """Creates the Patient Care Coordinator agent (acts as manager)."""
-        coordinator = Agent(
-            config=self._agents_config['care_coordinator'],
-            verbose=True,
-            allow_delegation=True,  # Enable delegation for the manager role
-            tools=[self.healthcare_tools.appointment_scheduler_tool()]
-        )
+        config = self._agents_config['care_coordinator'].copy()
+        config['allow_delegation'] = True  # Enable delegation for the manager role
+        config['tools'] = [self.healthcare_tools.appointment_scheduler_tool()]
+        coordinator = Agent(**config)
         return coordinator
 
     @agent
     def outcome_evaluator(self) -> Agent:
         """Creates the Clinical Outcomes Analyst agent."""
         return Agent(
-            config=self._agents_config['outcome_evaluator'],
-            verbose=True
+            **self._agents_config['outcome_evaluator']
         )
 
     @task
     def ingest_hl7_data(self) -> Task:
         """Task for parsing and validating HL7 data."""
-        return Task(
-            config=self._tasks_config['ingest_hl7_data']
-        )
+        config = self._tasks_config['ingest_hl7_data'].copy()
+        # Remove agent field as it will be handled by the crew framework
+        config.pop('agent', None)
+        return Task(**config)
 
     @task
     def analyze_diagnostics(self) -> Task:
         """Task for diagnostic analysis."""
-        return Task(
-            config=self._tasks_config['analyze_diagnostics']
-        )
+        config = self._tasks_config['analyze_diagnostics'].copy()
+        # Remove agent field as it will be handled by the crew framework
+        config.pop('agent', None)
+        return Task(**config)
 
     @task 
     def create_treatment_plan(self) -> Task:
         """Task for treatment planning."""
-        return Task(
-            config=self._tasks_config['create_treatment_plan']
-        )
+        config = self._tasks_config['create_treatment_plan'].copy()
+        # Remove agent field as it will be handled by the crew framework
+        config.pop('agent', None)
+        return Task(**config)
 
     @task
     def coordinate_care(self) -> Task:
         """Task for care coordination."""
-        return Task(
-            config=self._tasks_config['coordinate_care']
-        )
+        config = self._tasks_config['coordinate_care'].copy()
+        # Remove agent field as it will be handled by the crew framework
+        config.pop('agent', None)
+        return Task(**config)
 
     @task
     def evaluate_outcomes(self) -> Task:
         """Task for outcome evaluation."""
-        return Task(
-            config=self._tasks_config['evaluate_outcomes']
-        )
+        config = self._tasks_config['evaluate_outcomes'].copy()
+        # Remove agent field as it will be handled by the crew framework
+        config.pop('agent', None)
+        return Task(**config)
 
     @crew
     def crew(self) -> Crew:
@@ -636,10 +634,14 @@ class HealthcareSimulationCrew:
         all_agents = self.get_all_agents()
         all_tasks = self.get_all_tasks()
         
+        # Remove the care coordinator from agents list since it's the manager
+        manager_agent = self.care_coordinator()
+        agents_without_manager = [agent for agent in all_agents if agent != manager_agent]
+        
         return Crew(
-            agents=all_agents,
+            agents=agents_without_manager,
             tasks=all_tasks,
             process=Process.hierarchical,  # Use hierarchical process with care coordinator as manager
-            manager_agent=self.care_coordinator(),
+            manager_agent=manager_agent,
             verbose=True
         )
