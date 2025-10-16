@@ -426,6 +426,21 @@ custom_hl7 = st.sidebar.text_area(
     help="Paste a custom HL7 message here to override the selected scenario"
 )
 
+# FHIR Generation Options
+st.sidebar.subheader("🔄 FHIR Generation")
+generate_fhir = st.sidebar.checkbox(
+    "Generate FHIR R4 resources",
+    value=False,
+    help="Convert HL7 message to FHIR R4 format"
+)
+
+if generate_fhir:
+    fhir_output_format = st.sidebar.selectbox(
+        "FHIR Output Format:",
+        ["bundle", "individual_resources", "json", "summary"],
+        help="Choose how to display the FHIR resources"
+    )
+
 # Test connection button
 test_connection_button = st.sidebar.button("Test Connection", help="Test connection to the selected LLM backend")
 
@@ -580,6 +595,32 @@ def run_simulation() -> None:
             
             # Store results in session state
             st.session_state.simulation_results = result
+            
+            # Generate FHIR if requested
+            if generate_fhir:
+                try:
+                    # Extract patient data from simulation results
+                    patient_data = {
+                        'id': result.get('patient_id', 'unknown'),
+                        'family_name': result.get('patient_info', {}).get('name', '').split('^')[0] if '^' in result.get('patient_info', {}).get('name', '') else 'Unknown',
+                        'given_name': result.get('patient_info', {}).get('name', '').split('^')[1] if '^' in result.get('patient_info', {}).get('name', '') else 'Unknown',
+                        'birth_date': result.get('patient_info', {}).get('dob', ''),
+                        'gender': result.get('patient_info', {}).get('gender', 'unknown'),
+                        'phone': result.get('patient_info', {}).get('phone', ''),
+                        'address': result.get('patient_info', {}).get('address', {}),
+                        'visit_info': result.get('visit_info', {}),
+                        'diagnoses': result.get('diagnoses', []),
+                        'observations': result.get('observations', []),
+                        'procedures': result.get('procedures', [])
+                    }
+                    
+                    # Generate FHIR
+                    fhir_result = sim_crew.generate_fhir_instead_of_hl7(patient_data)
+                    st.session_state.fhir_results = fhir_result
+                    
+                except Exception as e:
+                    st.sidebar.error(f"FHIR generation failed: {str(e)}")
+                    st.session_state.fhir_results = None
             st.session_state.simulation_timestamp = datetime.now()
             
             # Access structured patient information
@@ -592,8 +633,64 @@ def run_simulation() -> None:
                 st.session_state.patient_info = None
                 st.warning("Could not retrieve structured patient information after simulation.")
 
+            # Display HL7 validation results
+            if 'hl7_validation' in simulation_results:
+                hl7_validation = simulation_results['hl7_validation']
+                st.subheader("🔍 HL7 Message Validation Results")
+                
+                # Validation status
+                status = hl7_validation.get('status', 'UNKNOWN')
+                status_emoji = {
+                    'VALID': '✅',
+                    'WARNING': '⚠️',
+                    'ERROR': '❌',
+                    'CRITICAL': '🚨'
+                }.get(status, '❓')
+                
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Validation Status", f"{status_emoji} {status}")
+                with col2:
+                    st.metric("Total Issues", hl7_validation.get('total_issues', 0))
+                with col3:
+                    st.metric("Validation Level", hl7_validation.get('validation_level', 'Unknown'))
+                
+                # Severity breakdown
+                severity_counts = hl7_validation.get('severity_counts', {})
+                if severity_counts:
+                    st.subheader("Issue Breakdown")
+                    severity_cols = st.columns(len(severity_counts))
+                    for i, (severity, count) in enumerate(severity_counts.items()):
+                        if count > 0:
+                            with severity_cols[i]:
+                                st.metric(severity, count)
+                
+                # Detailed issues
+                issues = hl7_validation.get('issues', [])
+                if issues:
+                    st.subheader("Detailed Issues")
+                    for i, issue in enumerate(issues):
+                        severity = issue.get('severity', 'UNKNOWN')
+                        segment = issue.get('segment_type', 'UNKNOWN')
+                        field = issue.get('field_number', 'N/A')
+                        message = issue.get('message', 'No message')
+                        details = issue.get('details', 'No details')
+                        suggested_fix = issue.get('suggested_fix', 'No suggestion')
+                        
+                        with st.expander(f"{i+1}. [{severity}] {segment} - {message[:50]}..."):
+                            st.write(f"**Segment:** {segment}")
+                            if field != 'N/A':
+                                st.write(f"**Field:** {field}")
+                            st.write(f"**Message:** {message}")
+                            st.write(f"**Details:** {details}")
+                            if suggested_fix and suggested_fix != 'No suggestion':
+                                st.write(f"**Suggested Fix:** {suggested_fix}")
+                else:
+                    st.success("✅ No validation issues found!")
+            
+            # Display legacy validation issues for backward compatibility
             if validation_issues:
-                st.warning("HL7 Message Validation Issues:")
+                st.warning("Legacy HL7 Message Validation Issues:")
                 for issue in validation_issues:
                     st.warning(f"- {issue.get('error_type', 'Error')}: {issue.get('message', 'Unknown issue')}")
                 
@@ -865,6 +962,81 @@ if st.session_state.simulation_results:
             """)
     
     with tab4:
+        st.header("🎯 FHIR Resources")
+        
+        if st.session_state.get('fhir_results'):
+            fhir_result = st.session_state.fhir_results
+            
+            if fhir_result.get('success'):
+                st.success("✅ FHIR resources generated successfully!")
+                
+                # Display FHIR summary
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Message Type", fhir_result.get('message_type', 'Unknown'))
+                with col2:
+                    st.metric("Resources Generated", fhir_result.get('resource_count', 0))
+                with col3:
+                    st.metric("Patient ID", fhir_result.get('patient_id', 'Unknown'))
+                
+                # Display FHIR Bundle
+                if fhir_result.get('fhir_bundle'):
+                    st.subheader("FHIR Bundle")
+                    st.json(fhir_result['fhir_bundle'])
+                
+                # Display HL7 messages if generated
+                if fhir_result.get('hl7_messages'):
+                    st.subheader("Generated HL7 Messages")
+                    for i, hl7_msg in enumerate(fhir_result['hl7_messages']):
+                        st.text_area(f"HL7 Message {i+1}", hl7_msg, height=200)
+                
+            else:
+                st.error(f"❌ FHIR generation failed: {fhir_result.get('error', 'Unknown error')}")
+        else:
+            st.info("No FHIR resources generated. Enable FHIR generation in the sidebar to see FHIR resources here.")
+            
+            # Show example FHIR structure
+            st.subheader("Example FHIR Bundle Structure")
+            example_fhir = {
+                "resourceType": "Bundle",
+                "id": "example-bundle-123",
+                "type": "collection",
+                "timestamp": "2024-01-01T12:00:00Z",
+                "entry": [
+                    {
+                        "fullUrl": "urn:uuid:patient-123",
+                        "resource": {
+                            "resourceType": "Patient",
+                            "id": "patient-123",
+                            "name": [{"family": "Smith", "given": ["John"]}],
+                            "gender": "male",
+                            "birthDate": "1965-03-12"
+                        }
+                    },
+                    {
+                        "fullUrl": "urn:uuid:observation-123",
+                        "resource": {
+                            "resourceType": "Observation",
+                            "id": "observation-123",
+                            "status": "final",
+                            "code": {
+                                "coding": [{
+                                    "system": "http://loinc.org",
+                                    "code": "8867-4",
+                                    "display": "Heart rate"
+                                }]
+                            },
+                            "valueQuantity": {
+                                "value": 88,
+                                "unit": "/min"
+                            }
+                        }
+                    }
+                ]
+            }
+            st.json(example_fhir)
+
+    with tab5:
         st.header("Care Timeline")
         
         if st.session_state.simulation_results:

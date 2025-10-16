@@ -3,6 +3,7 @@ from crewai import Agent, Crew, Process, Task
 from crewai.project import CrewBase, agent, task, crew, before_kickoff
 from hl7apy import parser as hl7_parser
 from tools.healthcare_tools import HealthcareTools
+from hl7_validator import validate_hl7_message, ValidationLevel
 from llm_config import LLMConfig, create_llm_config
 from config_loader import get_config_loader
 import json
@@ -41,6 +42,16 @@ class HealthcareSimulationCrew:
         config_loader = get_config_loader()
         self._agents_config, self._tasks_config = config_loader.load_configurations()
         logger.info(f"Loaded {len(self._agents_config)} agents and {len(self._tasks_config)} tasks")
+        
+        # Initialize FHIR converter for optional FHIR generation
+        try:
+            from fhir_to_hl7_converter import FHIRToHL7Converter
+            self.fhir_converter = FHIRToHL7Converter()
+            self.fhir_available = True
+        except ImportError:
+            self.fhir_converter = None
+            self.fhir_available = False
+            logger.warning("FHIR converter not available")
 
     def _extract_observations(self, parsed_message) -> List[Dict[str, Any]]:
         """Extract observation/lab results from OBX segments."""
@@ -265,6 +276,265 @@ class HealthcareSimulationCrew:
         
         return fallback_data
 
+    def generate_fhir_message(self, patient_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Generate FHIR message directly from patient data, bypassing HL7 conversion.
+        
+        Args:
+            patient_data: Dictionary containing patient information, diagnoses, observations, etc.
+            
+        Returns:
+            Dictionary containing FHIR resources and metadata
+        """
+        if not self.fhir_available:
+            return {
+                'success': False,
+                'error': 'FHIR generation not available - FHIR converter not installed',
+                'fhir_resources': [],
+                'bundle': None
+            }
+        
+        try:
+            # Create FHIR Bundle from patient data
+            fhir_bundle = self._create_fhir_bundle_from_data(patient_data)
+            
+            # Convert FHIR Bundle to HL7 (if needed for consistency)
+            hl7_messages = self.fhir_converter.convert_bundle_to_hl7(fhir_bundle)
+            
+            return {
+                'success': True,
+                'fhir_bundle': fhir_bundle,
+                'hl7_messages': hl7_messages,
+                'patient_id': patient_data.get('id', 'unknown'),
+                'resource_count': len(fhir_bundle.get('entry', [])),
+                'message_type': 'FHIR_R4'
+            }
+            
+        except Exception as e:
+            logger.error(f"FHIR generation failed: {e}")
+            return {
+                'success': False,
+                'error': str(e),
+                'fhir_resources': [],
+                'bundle': None
+            }
+    
+    def _create_fhir_bundle_from_data(self, patient_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create FHIR Bundle from patient data."""
+        import uuid
+        from datetime import datetime
+        
+        # Create Patient resource
+        patient_resource = self._create_fhir_patient(patient_data)
+        
+        # Create other resources
+        resources = [patient_resource]
+        
+        # Add Encounter if visit info exists
+        if patient_data.get('visit_info'):
+            encounter_resource = self._create_fhir_encounter(patient_data, patient_resource)
+            if encounter_resource:
+                resources.append(encounter_resource)
+        
+        # Add Conditions from diagnoses
+        if patient_data.get('diagnoses'):
+            condition_resources = self._create_fhir_conditions(patient_data, patient_resource)
+            resources.extend(condition_resources)
+        
+        # Add Observations from observations
+        if patient_data.get('observations'):
+            encounter_ref = next((r for r in resources if r['resourceType'] == 'Encounter'), None)
+            observation_resources = self._create_fhir_observations(patient_data, patient_resource, encounter_ref)
+            resources.extend(observation_resources)
+        
+        # Add Procedures from procedures
+        if patient_data.get('procedures'):
+            encounter_ref = next((r for r in resources if r['resourceType'] == 'Encounter'), None)
+            procedure_resources = self._create_fhir_procedures(patient_data, patient_resource, encounter_ref)
+            resources.extend(procedure_resources)
+        
+        # Create Bundle
+        bundle_id = str(uuid.uuid4())
+        entries = []
+        for resource in resources:
+            entries.append({
+                'fullUrl': f"urn:uuid:{resource['id']}",
+                'resource': resource
+            })
+        
+        return {
+            'resourceType': 'Bundle',
+            'id': bundle_id,
+            'type': 'collection',
+            'timestamp': datetime.now().isoformat(),
+            'entry': entries
+        }
+    
+    def _create_fhir_patient(self, patient_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create FHIR Patient resource."""
+        import uuid
+        
+        patient_id = patient_data.get('id', str(uuid.uuid4()))
+        
+        return {
+            'resourceType': 'Patient',
+            'id': patient_id,
+            'identifier': [{
+                'use': 'usual',
+                'type': {
+                    'coding': [{
+                        'system': 'http://terminology.hl7.org/CodeSystem/v2-0203',
+                        'code': 'MR',
+                        'display': 'Medical Record Number'
+                    }]
+                },
+                'value': patient_id
+            }],
+            'name': [{
+                'use': 'official',
+                'family': patient_data.get('family_name', 'Unknown'),
+                'given': [patient_data.get('given_name', 'Unknown')]
+            }],
+            'gender': patient_data.get('gender', 'unknown'),
+            'birthDate': patient_data.get('birth_date'),
+            'telecom': [{
+                'system': 'phone',
+                'value': patient_data.get('phone', ''),
+                'use': 'home'
+            }] if patient_data.get('phone') else [],
+            'address': [patient_data.get('address', {})] if patient_data.get('address') else []
+        }
+    
+    def _create_fhir_encounter(self, patient_data: Dict[str, Any], patient_resource: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Create FHIR Encounter resource."""
+        import uuid
+        
+        visit_info = patient_data.get('visit_info', {})
+        if not visit_info:
+            return None
+        
+        return {
+            'resourceType': 'Encounter',
+            'id': str(uuid.uuid4()),
+            'status': 'finished',
+            'class': {
+                'system': 'http://terminology.hl7.org/CodeSystem/v3-ActCode',
+                'code': visit_info.get('patient_class', 'inpatient'),
+                'display': visit_info.get('patient_class', 'inpatient').title()
+            },
+            'subject': {
+                'reference': f"Patient/{patient_resource['id']}"
+            },
+            'location': [{
+                'location': {
+                    'display': visit_info.get('assigned_patient_location', 'Unknown')
+                }
+            }] if visit_info.get('assigned_patient_location') else []
+        }
+    
+    def _create_fhir_conditions(self, patient_data: Dict[str, Any], patient_resource: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Create FHIR Condition resources."""
+        import uuid
+        
+        conditions = []
+        for diagnosis in patient_data.get('diagnoses', []):
+            conditions.append({
+                'resourceType': 'Condition',
+                'id': str(uuid.uuid4()),
+                'subject': {
+                    'reference': f"Patient/{patient_resource['id']}"
+                },
+                'code': {
+                    'coding': [{
+                        'system': 'http://hl7.org/fhir/sid/icd-10-cm',
+                        'code': diagnosis.get('code', ''),
+                        'display': diagnosis.get('description', '')
+                    }]
+                },
+                'clinicalStatus': {
+                    'coding': [{
+                        'system': 'http://terminology.hl7.org/CodeSystem/condition-clinical',
+                        'code': 'active',
+                        'display': 'Active'
+                    }]
+                }
+            })
+        
+        return conditions
+    
+    def _create_fhir_observations(self, patient_data: Dict[str, Any], patient_resource: Dict[str, Any], encounter_resource: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Create FHIR Observation resources."""
+        import uuid
+        
+        observations = []
+        for obs in patient_data.get('observations', []):
+            observation = {
+                'resourceType': 'Observation',
+                'id': str(uuid.uuid4()),
+                'status': 'final',
+                'subject': {
+                    'reference': f"Patient/{patient_resource['id']}"
+                },
+                'code': {
+                    'coding': [{
+                        'system': 'http://loinc.org',
+                        'code': obs.get('observation_identifier', ''),
+                        'display': obs.get('observation_description', '')
+                    }]
+                }
+            }
+            
+            if encounter_resource:
+                observation['encounter'] = {
+                    'reference': f"Encounter/{encounter_resource['id']}"
+                }
+            
+            # Add value
+            if obs.get('observation_value'):
+                try:
+                    numeric_value = float(obs['observation_value'])
+                    observation['valueQuantity'] = {
+                        'value': numeric_value,
+                        'unit': obs.get('units', '')
+                    }
+                except ValueError:
+                    observation['valueString'] = obs['observation_value']
+            
+            observations.append(observation)
+        
+        return observations
+    
+    def _create_fhir_procedures(self, patient_data: Dict[str, Any], patient_resource: Dict[str, Any], encounter_resource: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Create FHIR Procedure resources."""
+        import uuid
+        
+        procedures = []
+        for proc in patient_data.get('procedures', []):
+            procedure = {
+                'resourceType': 'Procedure',
+                'id': str(uuid.uuid4()),
+                'status': 'completed',
+                'subject': {
+                    'reference': f"Patient/{patient_resource['id']}"
+                },
+                'code': {
+                    'coding': [{
+                        'system': 'http://www.ama-assn.org/go/cpt',
+                        'code': proc.get('procedure_code', ''),
+                        'display': proc.get('procedure_description', '')
+                    }]
+                }
+            }
+            
+            if encounter_resource:
+                procedure['encounter'] = {
+                    'reference': f"Encounter/{encounter_resource['id']}"
+                }
+            
+            procedures.append(procedure)
+        
+        return procedures
+
     @before_kickoff
     def prepare_simulation(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -277,6 +547,31 @@ class HealthcareSimulationCrew:
         
         # Reset validation issues for this parsing session
         self.validation_issues = []
+        
+        # Validate HL7 message format and structure
+        try:
+            validation_result = validate_hl7_message(inputs['hl7_message'], ValidationLevel.STANDARD)
+            inputs['hl7_validation'] = validation_result
+            
+            # Log validation issues
+            if validation_result.get('needs_attention', False):
+                logger.warning(f"HL7 validation found issues: {validation_result.get('total_issues', 0)} issues")
+                for issue in validation_result.get('issues', []):
+                    if issue.get('severity') in ['ERROR', 'CRITICAL']:
+                        logger.error(f"HL7 Validation {issue.get('severity')}: {issue.get('message')}")
+                    else:
+                        logger.warning(f"HL7 Validation {issue.get('severity')}: {issue.get('message')}")
+            else:
+                logger.info("HL7 message validation passed")
+                
+        except Exception as e:
+            logger.warning(f"HL7 validation failed: {e}")
+            inputs['hl7_validation'] = {
+                'status': 'VALIDATION_ERROR',
+                'error': str(e),
+                'total_issues': 1,
+                'issues': [{'severity': 'ERROR', 'message': f'Validation failed: {str(e)}'}]
+            }
         
         # Primary attempt to parse the HL7 message using the hl7apy library
         try:
@@ -404,6 +699,55 @@ class HealthcareSimulationCrew:
         inputs['validation_errors_count'] = len([issue for issue in self.validation_issues if 'Error' in issue['error_type']])
             
         return inputs
+    
+    def generate_fhir_instead_of_hl7(self, patient_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Generate FHIR message instead of HL7 from patient data.
+        
+        Args:
+            patient_data: Dictionary containing patient information, diagnoses, observations, etc.
+            
+        Returns:
+            Dictionary containing FHIR resources and metadata
+        """
+        if not self.fhir_available:
+            return {
+                'success': False,
+                'error': 'FHIR generation not available - FHIR converter not installed',
+                'message_type': 'ERROR'
+            }
+        
+        try:
+            # Generate FHIR Bundle
+            fhir_result = self.generate_fhir_message(patient_data)
+            
+            if fhir_result['success']:
+                return {
+                    'success': True,
+                    'message_type': 'FHIR_R4',
+                    'fhir_bundle': fhir_result['fhir_bundle'],
+                    'patient_id': fhir_result['patient_id'],
+                    'resource_count': fhir_result['resource_count'],
+                    'hl7_messages': fhir_result.get('hl7_messages', []),
+                    'validation_errors': [],
+                    'validation_warnings': 0,
+                    'validation_errors_count': 0,
+                    'parsing_success': True
+                }
+            else:
+                return {
+                    'success': False,
+                    'error': fhir_result.get('error', 'Unknown error'),
+                    'message_type': 'ERROR'
+                }
+                
+        except Exception as e:
+            logger.error(f"FHIR generation failed: {e}")
+            return {
+                'success': False,
+                'error': str(e),
+                'message_type': 'ERROR'
+            }
 
     def _create_llm_instance(self):
         """Create an LLM instance based on configuration"""
