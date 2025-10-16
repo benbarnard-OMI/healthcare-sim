@@ -11,6 +11,16 @@ This system decomposes healthcare simulation into modular agents—each mimickin
 - **Care Coordination**: Manages transitions between care phases
 - **Outcome Evaluation**: Monitors and analyzes treatment results
 
+### Synthea Integration
+
+The system now includes comprehensive integration with **Synthea**, a synthetic patient data generator that produces highly realistic patient datasets. This integration enables:
+
+- **Realistic Patient Demographics**: Age-appropriate patient populations with realistic demographics
+- **Clinical Accuracy**: Evidence-based disease models and treatment pathways
+- **Diverse Scenarios**: Patients across all age groups with various medical conditions
+- **FHIR to HL7 Conversion**: Automatic conversion from Synthea's FHIR format to HL7 v2.x
+- **Dynamic Scenario Generation**: Create new patient scenarios on-demand
+
 ## Installation
 
 1. Clone the repository:
@@ -80,6 +90,13 @@ options:
   --scenario SCENARIO, -s SCENARIO
                         Sample scenario name. Options: chest_pain, diabetes, pediatric, surgical, stroke
   --test-connection     Test LLM connection and exit
+  --generate-synthea    Generate new Synthea scenarios before simulation
+  --num-patients N      Number of Synthea patients to generate (default: 20)
+  --age-min MIN         Minimum age for Synthea patients (default: 0)
+  --age-max MAX         Maximum age for Synthea patients (default: 100)
+  --state STATE         US state for Synthea demographics (default: Massachusetts)
+  --city CITY           City for Synthea demographics (default: Boston)
+  --synthea-seed SEED   Random seed for Synthea generation
 ```
 
 Example with different backends:
@@ -95,6 +112,40 @@ python simulate.py --backend openrouter --api-key your-openrouter-key --model op
 
 # Test connection
 python simulate.py --backend ollama --test-connection
+```
+
+### Synthea Integration Examples
+
+Generate and simulate with Synthea data:
+```bash
+# Generate 50 diverse patients and run simulation
+python simulate.py --generate-synthea --num-patients 50 --backend openai --api-key your-key
+
+# Generate pediatric patients (ages 0-18) and simulate
+python simulate.py --generate-synthea --num-patients 20 --age-min 0 --age-max 18 --backend openai
+
+# Generate elderly patients with specific demographics
+python simulate.py --generate-synthea --num-patients 30 --age-min 65 --age-max 100 --state California --city Los Angeles
+
+# Use specific Synthea scenario
+python simulate.py --scenario synthea_20240101_120000_1 --backend openai
+```
+
+### Synthea Management
+
+Manage Synthea scenarios independently:
+```bash
+# Generate new scenarios
+python synthea_scenario_loader.py --generate --num-patients 100 --age-min 0 --age-max 100
+
+# List available scenarios
+python synthea_scenario_loader.py --list
+
+# Export scenarios
+python synthea_scenario_loader.py --export-all output_directory/
+
+# Run integration demo
+python synthea_integration_demo.py --num-patients 25 --llm-backend openai --api-key your-key
 ```
 
 ### Interactive Dashboard

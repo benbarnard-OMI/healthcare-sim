@@ -49,6 +49,13 @@ def main() -> None:
     parser.add_argument('--verbose', '-v', action='store_true', help='Enable verbose output')
     parser.add_argument('--scenario', '-s', type=str, help=f'Sample scenario name. Options: {", ".join(list_scenarios())}')
     parser.add_argument('--test-connection', action='store_true', help='Test LLM connection and exit')
+    parser.add_argument('--generate-synthea', action='store_true', help='Generate new Synthea scenarios before simulation')
+    parser.add_argument('--num-patients', type=int, default=20, help='Number of Synthea patients to generate')
+    parser.add_argument('--age-min', type=int, default=0, help='Minimum age for Synthea patients')
+    parser.add_argument('--age-max', type=int, default=100, help='Maximum age for Synthea patients')
+    parser.add_argument('--state', type=str, default='Massachusetts', help='US state for Synthea demographics')
+    parser.add_argument('--city', type=str, default='Boston', help='City for Synthea demographics')
+    parser.add_argument('--synthea-seed', type=int, help='Random seed for Synthea generation')
     args = parser.parse_args()
     
     # Create LLM configuration
@@ -78,6 +85,30 @@ def main() -> None:
     
     # Initialize the simulation crew with LLM configuration
     sim_crew = HealthcareSimulationCrew(llm_config=llm_config)
+    
+    # Generate Synthea scenarios if requested
+    if args.generate_synthea:
+        try:
+            logger.info("Generating Synthea scenarios...")
+            scenario_loader = get_scenario_loader()
+            synthea_result = scenario_loader.generate_synthea_scenarios(
+                num_patients=args.num_patients,
+                age_min=args.age_min,
+                age_max=args.age_max,
+                state=args.state,
+                city=args.city,
+                seed=args.synthea_seed
+            )
+            logger.info(f"Generated {synthea_result['scenarios_created']} Synthea scenarios")
+            
+            # If no specific scenario is requested, use the first generated one
+            if not args.scenario and synthea_result['scenario_ids']:
+                args.scenario = synthea_result['scenario_ids'][0]
+                logger.info(f"Using generated scenario: {args.scenario}")
+        except Exception as e:
+            logger.error(f"Failed to generate Synthea scenarios: {e}")
+            if not args.scenario:
+                logger.warning("Falling back to default scenario")
     
     # Prepare the HL7 message
     hl7_message = None
