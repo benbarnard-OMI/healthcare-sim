@@ -105,7 +105,7 @@ class LLMConfig:
             if self.backend == LLMBackend.OPENAI:
                 self.model = os.getenv('OPENAI_MODEL', 'gpt-4')
             elif self.backend == LLMBackend.OPENROUTER:
-                self.model = os.getenv('OPENROUTER_MODEL', 'openai/gpt-4')
+                self.model = os.getenv('OPENROUTER_MODEL', 'z-ai/glm-4.6')
             elif self.backend == LLMBackend.OLLAMA:
                 self.model = os.getenv('OLLAMA_MODEL', 'llama2')
         
@@ -259,10 +259,12 @@ DEFAULT_CONFIGS = {
         'base_url': 'http://localhost:11434/v1'
     },
     LLMBackend.OPENROUTER: {
-        'model': 'openai/gpt-4',
+        'model': 'z-ai/glm-4.6',
         'temperature': 0.7,
         'max_tokens': 2000,
-        'base_url': 'https://openrouter.ai/api/v1'
+        'base_url': 'https://openrouter.ai/api/v1',
+        'frequency_penalty': 0.0,
+        'presence_penalty': 0.0
     }
 }
 
