@@ -1,9 +1,10 @@
 from typing import Dict, Any, Optional, List
-from crewai import Agent, Crew, Process, Task
+import os
+from crewai import Agent, Crew, Process, Task, LLM
 from crewai.project import CrewBase, agent, task, crew, before_kickoff
 from hl7apy import parser as hl7_parser
 from tools.healthcare_tools import HealthcareTools
-from llm_config import LLMConfig, create_llm_config
+from llm_config import LLMConfig, create_llm_config, LLMBackend
 from config_loader import get_config_loader
 import json
 import logging
@@ -405,29 +406,65 @@ class HealthcareSimulationCrew:
             
         return inputs
 
-    def _create_llm_instance(self):
-        """Create an LLM instance based on configuration"""
+    def _create_crewai_llm(self):
+        """Create a CrewAI LLM instance based on configuration"""
         try:
-            from openai import OpenAI
+            # Create LLM instance using CrewAI's LLM class
+            if self.llm_config.backend == LLMBackend.OLLAMA:
+                # Use the exact format from CrewAI docs: ollama/model_name
+                llm = LLM(
+                    model=f"ollama/{self.llm_config.model}",
+                    base_url=self.llm_config.base_url.replace('/v1', '') if self.llm_config.base_url else 'http://localhost:11434',
+                    temperature=self.llm_config.temperature,
+                    max_tokens=self.llm_config.max_tokens
+                )
+                logger.info(f"Created CrewAI LLM with Ollama: ollama/{self.llm_config.model}")
+            elif self.llm_config.backend == LLMBackend.OPENROUTER:
+                llm = LLM(
+                    model=f"openrouter/{self.llm_config.model}",
+                    base_url=self.llm_config.base_url,
+                    api_key=self.llm_config.api_key,
+                    temperature=self.llm_config.temperature,
+                    max_tokens=self.llm_config.max_tokens
+                )
+                logger.info(f"Created CrewAI LLM with OpenRouter: openrouter/{self.llm_config.model}")
+            elif self.llm_config.backend == LLMBackend.DEEPSEEK:
+                llm = LLM(
+                    model=self.llm_config.model,
+                    api_key=self.llm_config.api_key,
+                    base_url=self.llm_config.base_url,
+                    temperature=self.llm_config.temperature,
+                    max_tokens=self.llm_config.max_tokens
+                )
+                logger.info(f"Created CrewAI LLM with DeepSeek: {self.llm_config.model}")
+            else:  # OpenAI
+                llm = LLM(
+                    model=self.llm_config.model,
+                    api_key=self.llm_config.api_key,
+                    base_url=self.llm_config.base_url,
+                    temperature=self.llm_config.temperature,
+                    max_tokens=self.llm_config.max_tokens
+                )
+                logger.info(f"Created CrewAI LLM with OpenAI: {self.llm_config.model}")
             
-            # Get client parameters for the LLM backend
-            client_params = self.llm_config.get_client_params()
-            client = OpenAI(**client_params)
-            
-            # For CrewAI, we need to set the OpenAI client
-            import os
-            if self.llm_config.api_key:
-                os.environ["OPENAI_API_KEY"] = self.llm_config.api_key
-            if self.llm_config.base_url:
-                os.environ["OPENAI_BASE_URL"] = self.llm_config.base_url
-            if self.llm_config.model:
-                os.environ["OPENAI_MODEL_NAME"] = self.llm_config.model
-            
-            return client
+            return llm
             
         except Exception as e:
-            logger.error(f"Failed to create LLM instance: {str(e)}")
+            logger.error(f"Failed to create CrewAI LLM instance: {str(e)}")
             raise
+
+    def _step_callback(self, step_output):
+        """Callback to monitor crew execution steps and prevent infinite loops."""
+        try:
+            if hasattr(step_output, 'task') and hasattr(step_output.task, 'status'):
+                logger.info(f"Task {step_output.task.description[:50]}... status: {step_output.task.status}")
+                
+                # Check for repeated failures
+                if hasattr(step_output.task, 'retry_count') and step_output.task.retry_count > 2:
+                    logger.warning(f"Task {step_output.task.description[:50]}... has failed {step_output.task.retry_count} times")
+                    
+        except Exception as e:
+            logger.warning(f"Error in step callback: {e}")
 
     def get_llm_config_dict(self) -> Dict[str, Any]:
         """Get LLM configuration as dictionary for CrewAI agents"""
@@ -439,6 +476,14 @@ class HealthcareSimulationCrew:
         if self.llm_config.max_tokens:
             config['max_tokens'] = self.llm_config.max_tokens
             
+        # For LiteLLM compatibility, prefix model with provider
+        if self.llm_config.backend == LLMBackend.OLLAMA:
+            config['model'] = f"ollama/{self.llm_config.model}"
+            logger.info(f"Updated model name for Ollama: {config['model']}")
+        elif self.llm_config.backend == LLMBackend.OPENROUTER:
+            config['model'] = f"openrouter/{self.llm_config.model}"
+            
+        logger.info(f"Final LLM config: {config}")
         return config
 
     def add_dynamic_agent(self, agent_name: str, agent_config: Dict[str, Any], tools: Optional[List] = None) -> None:
@@ -516,11 +561,10 @@ class HealthcareSimulationCrew:
         """Get all tasks including dynamically added ones."""
         # Get core tasks by calling their methods
         core_tasks = [
-            self.ingest_hl7_data(),
-            self.analyze_diagnostics(),
-            self.create_treatment_plan(),
-            self.coordinate_care(),
-            self.evaluate_outcomes()
+            self.parse_hl7_data(),
+            self.make_clinical_decisions(),
+            self.generate_next_steps(),
+            self.generate_hl7_messages()
         ]
         
         # Add dynamic tasks
@@ -553,8 +597,8 @@ class HealthcareSimulationCrew:
     def diagnostics_agent(self) -> Agent:
         """Creates the Clinical Diagnostics Analyst agent."""
         return Agent(
-            **self._agents_config['diagnostics_agent'],
-            tools=[self.healthcare_tools.clinical_guidelines_tool()]
+            **self._agents_config['diagnostics_agent']
+            # Removed tools - real clinicians don't look up guidelines constantly
         )
 
     @agent
@@ -562,10 +606,7 @@ class HealthcareSimulationCrew:
         """Creates the Treatment Planning Specialist agent."""
         return Agent(
             **self._agents_config['treatment_planner'],
-            tools=[
-                self.healthcare_tools.clinical_guidelines_tool(),
-                self.healthcare_tools.medication_interaction_tool()
-            ]
+            tools=[self.healthcare_tools.medication_interaction_tool()]  # Only keep medication interaction tool for safety
         )
 
     @agent
@@ -573,7 +614,8 @@ class HealthcareSimulationCrew:
         """Creates the Patient Care Coordinator agent (acts as manager)."""
         config = self._agents_config['care_coordinator'].copy()
         config['allow_delegation'] = True  # Enable delegation for the manager role
-        config['tools'] = [self.healthcare_tools.appointment_scheduler_tool()]
+        # Remove tools for manager agent - CrewAI expects managers to not have tools
+        config.pop('tools', None)
         coordinator = Agent(**config)
         return coordinator
 
@@ -585,63 +627,89 @@ class HealthcareSimulationCrew:
         )
 
     @task
-    def ingest_hl7_data(self) -> Task:
-        """Task for parsing and validating HL7 data."""
-        config = self._tasks_config['ingest_hl7_data'].copy()
-        # Remove agent field as it will be handled by the crew framework
-        config.pop('agent', None)
+    def parse_hl7_data(self) -> Task:
+        """Task for understanding the starting Synthea HL7 message."""
+        config = {
+            'description': 'Review the incoming Synthea HL7 message to understand the patient\'s current state: demographics, vital signs, lab results, and diagnoses. This is our starting point for the clinical pathway simulation.',
+            'expected_output': 'Summary of patient\'s current state from the Synthea HL7 message including: patient demographics, current vital signs, lab values, active diagnoses, and any clinical concerns that need attention.',
+            'agent': self.data_ingestion_agent()
+        }
         return Task(**config)
 
     @task
-    def analyze_diagnostics(self) -> Task:
-        """Task for diagnostic analysis."""
-        config = self._tasks_config['analyze_diagnostics'].copy()
-        # Remove agent field as it will be handled by the crew framework
-        config.pop('agent', None)
+    def make_clinical_decisions(self) -> Task:
+        """Task for making clinical decisions based on the starting Synthea HL7 data."""
+        config = {
+            'description': 'Based on the patient\'s current state from the Synthea HL7 message, make clinical decisions: assess acuity level, determine disposition (admit/discharge/observe), and identify what interventions are needed.',
+            'expected_output': 'Clinical decision summary including: acuity assessment (stable/unstable/critical), disposition recommendation (admit/discharge/observe), immediate interventions needed, and priority level.',
+            'agent': self.diagnostics_agent()
+        }
         return Task(**config)
 
-    @task 
-    def create_treatment_plan(self) -> Task:
-        """Task for treatment planning."""
-        config = self._tasks_config['create_treatment_plan'].copy()
-        # Remove agent field as it will be handled by the crew framework
-        config.pop('agent', None)
+    @task
+    def generate_next_steps(self) -> Task:
+        """Task for planning the next steps in the clinical pathway."""
+        config = {
+            'description': 'Based on the clinical decisions, plan the next steps: what specific orders need to be placed (labs, imaging, medications), what consultations to request, and what monitoring is needed.',
+            'expected_output': 'Next steps plan including: specific orders to place (lab codes, imaging studies, medications with doses), consultation requests, monitoring parameters, and immediate actions for the next 24-48 hours.',
+            'agent': self.treatment_planner()
+        }
+        return Task(**config)
+
+    @task
+    def generate_hl7_messages(self) -> Task:
+        """Task for generating a complete clinical pathway with all required HL7 messages."""
+        config = {
+            'description': 'Generate a COMPLETE clinical pathway with ALL required HL7 messages that would be created in a real hospital system. CRITICAL HL7 FIELD MAPPING FIXES REQUIRED: 1) PID field mapping: MRN in PID-3 (not PID-2), format PID|1||123456789^^^MAIN_HOSPITAL^MR||DOE^JOHN^M, 2) DG1 coding system: use ICD-10-CM (not I10), format DG1|2||E11.9^Type 2 diabetes mellitus^ICD-10-CM, 3) ORC field mapping: timestamp in ORC-9 (not ORC-5), provider in ORC-12, 4) RXO field mapping: RXO|NDC^DRUG^NDC|dose|units (omit RXO-3 unless max dose), separate RXR and TQ1 segments, 5) WBC/platelet UCUM units: use 10*9/L^10*9/L^UCUM (not 109/L), 6) Complete all messages: finish truncated pharmacy message, add ADT^A03 discharge, MDM^T02 discharge summary with TXA and diagnoses as CWE in OBX-5, add complete pharmacy discharge message, 7) Segment termination: end each segment after last meaningful field, avoid trailing empty pipes. PREVIOUS FIXES MAINTAINED: PV1 provider in PV1-7, RAS ORC-1 use SC, correct BP LOINC codes, distinct provider IDs, result-order linkage. REQUIREMENTS: Valid NDC codes, consistent patient data, proper HL7 v2.5.1 formatting, realistic timestamps.',
+            'expected_output': 'Complete clinical pathway with ALL required HL7 messages in chronological order with PROPER HL7 FIELD MAPPING AND PROPER SEGMENT TERMINATION. CRITICAL FIXES: 1) PID format: PID|1||123456789^^^MAIN_HOSPITAL^MR||DOE^JOHN^M (MRN in PID-3, not PID-2), 2) DG1 format: DG1|2||E11.9^Type 2 diabetes mellitus^ICD-10-CM (ICD-10-CM coding system), 3) ORC format: ORC|NW|ORD123|||||||20231015101500|||1234567890^SMITH^JANE^MD (timestamp in ORC-9), 4) RXO format: RXO|00093-0245-56^LISINOPRIL 20MG TAB^NDC|20|mg (dose in RXO-2, units in RXO-3), 5) WBC units: OBX|...|6690-2^Leukocytes^LN||6.8|10*9/L^10*9/L^UCUM|4.5-11.0|N (proper UCUM format), 6) Complete messages: finish truncated pharmacy message, add ADT^A03 discharge, MDM^T02 discharge summary with TXA and diagnoses as CWE in OBX-5, add complete pharmacy discharge message. Must include: 1) ADT^A01 admission with proper PID-3 MRN and DG1 ICD-10-CM coding, 2) ORM^O01 lab orders with ORC-9 timestamps, 3) ORU^R01 lab results with proper UCUM units (10*9/L), 4) ORM^O01 medication orders with correct RXO field mapping, 5) RAS^O17 medication administrations, 6) Complete ADT^A08 patient updates, 7) ADT^A03 discharge, 8) MDM^T02 discharge summary with TXA and diagnoses as CWE in OBX-5, 9) Complete pharmacy discharge message. All messages must have consistent patient data, valid codes, proper HL7 v2.5.1 structure with correct field positions, and realistic timestamps.',
+            'agent': self.treatment_planner()
+        }
         return Task(**config)
 
     @task
     def coordinate_care(self) -> Task:
         """Task for care coordination."""
         config = self._tasks_config['coordinate_care'].copy()
-        # Remove agent field as it will be handled by the crew framework
-        config.pop('agent', None)
+        # Assign the specific agent for this task
+        config['agent'] = self.care_coordinator()
         return Task(**config)
 
     @task
     def evaluate_outcomes(self) -> Task:
         """Task for outcome evaluation."""
         config = self._tasks_config['evaluate_outcomes'].copy()
-        # Remove agent field as it will be handled by the crew framework
-        config.pop('agent', None)
+        # Assign the specific agent for this task
+        config['agent'] = self.outcome_evaluator()
         return Task(**config)
 
     @crew
     def crew(self) -> Crew:
-        """Creates the Healthcare Simulation crew with core and dynamic agents/tasks."""
-        # Initialize LLM configuration for CrewAI
-        self._create_llm_instance()
+        """Creates the Healthcare Simulation crew focused on realistic clinical pathway simulation."""
+        # Create LLM instance using CrewAI's LLM class
+        llm = self._create_crewai_llm()
         
-        # Get all agents and tasks (core + dynamic)
-        all_agents = self.get_all_agents()
-        all_tasks = self.get_all_tasks()
+        # Use only essential tasks for realistic clinical workflow
+        clinical_tasks = [
+            self.parse_hl7_data(),
+            self.make_clinical_decisions(),
+            self.generate_next_steps(),
+            self.generate_hl7_messages()
+        ]
         
-        # Remove the care coordinator from agents list since it's the manager
-        manager_agent = self.care_coordinator()
-        agents_without_manager = [agent for agent in all_agents if agent != manager_agent]
+        # Get only the agents needed for clinical workflow
+        clinical_agents = [
+            self.data_ingestion_agent(),
+            self.diagnostics_agent(),
+            self.treatment_planner()
+        ]
         
         return Crew(
-            agents=agents_without_manager,
-            tasks=all_tasks,
-            process=Process.hierarchical,  # Use hierarchical process with care coordinator as manager
-            manager_agent=manager_agent,
-            verbose=True
+            agents=clinical_agents,
+            tasks=clinical_tasks,
+            process=Process.sequential,  # Use sequential process for clear workflow
+            verbose=True,
+            llm=llm,  # Pass LLM instance to CrewAI
+            max_iter=1,  # Single iteration for realistic speed
+            max_execution_time=60,  # 1 minute timeout for realistic speed
+            step_callback=self._step_callback  # Add callback for monitoring
         )

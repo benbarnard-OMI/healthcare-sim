@@ -19,8 +19,9 @@ logger = logging.getLogger(__name__)
 class LLMBackend(Enum):
     """Supported LLM backends"""
     OPENAI = "openai"
-    OLLAMA = "ollama" 
+    OLLAMA = "ollama"
     OPENROUTER = "openrouter"
+    DEEPSEEK = "deepseek"
     
     @classmethod
     def from_string(cls, backend: str) -> 'LLMBackend':
@@ -90,6 +91,8 @@ class LLMConfig:
             elif self.backend == LLMBackend.OLLAMA:
                 # Ollama typically doesn't need API key for local instances
                 self.api_key = os.getenv('OLLAMA_API_KEY')
+            elif self.backend == LLMBackend.DEEPSEEK:
+                self.api_key = os.getenv('DEEPSEEK_API_KEY')
         
         # Base URLs
         if not self.base_url:
@@ -99,6 +102,8 @@ class LLMConfig:
                 self.base_url = os.getenv('OPENROUTER_BASE_URL', 'https://openrouter.ai/api/v1')
             elif self.backend == LLMBackend.OLLAMA:
                 self.base_url = os.getenv('OLLAMA_BASE_URL', 'http://localhost:11434/v1')
+            elif self.backend == LLMBackend.DEEPSEEK:
+                self.base_url = os.getenv('DEEPSEEK_BASE_URL', 'https://api.deepseek.com')
         
         # Model names
         if not self.model:
@@ -107,7 +112,9 @@ class LLMConfig:
             elif self.backend == LLMBackend.OPENROUTER:
                 self.model = os.getenv('OPENROUTER_MODEL', 'z-ai/glm-4.6')
             elif self.backend == LLMBackend.OLLAMA:
-                self.model = os.getenv('OLLAMA_MODEL', 'llama2')
+                self.model = os.getenv('OLLAMA_MODEL', 'hf.co/unsloth/medgemma-4b-it-GGUF:Q4_K_M')
+            elif self.backend == LLMBackend.DEEPSEEK:
+                self.model = os.getenv('DEEPSEEK_MODEL', 'deepseek-chat')
         
         # Temperature
         temp_env = os.getenv('LLM_TEMPERATURE')
@@ -138,8 +145,18 @@ class LLMConfig:
         elif self.backend == LLMBackend.OLLAMA:
             # Ollama validation - check if model name is reasonable
             if not self.model:
-                logger.warning("No Ollama model specified, using default: llama2")
-                self.model = "llama2"
+                logger.warning("No Ollama model specified, using default: hf.co/unsloth/medgemma-4b-it-GGUF:Q4_K_M")
+                self.model = "hf.co/unsloth/medgemma-4b-it-GGUF:Q4_K_M"
+            # Ollama typically doesn't require API key for local/remote servers
+            if not self.api_key:
+                self.api_key = "ollama"  # Placeholder for Ollama compatibility
+        
+        elif self.backend == LLMBackend.DEEPSEEK:
+            if not self.api_key:
+                raise ValueError("DeepSeek API key is required")
+            if not self.model:
+                logger.warning("No DeepSeek model specified, using default: deepseek-chat")
+                self.model = "deepseek-chat"
     
     def to_openai_config(self) -> Dict[str, Any]:
         """
@@ -253,7 +270,7 @@ DEFAULT_CONFIGS = {
         'max_tokens': 2000
     },
     LLMBackend.OLLAMA: {
-        'model': 'llama2',
+        'model': 'hf.co/unsloth/medgemma-4b-it-GGUF:Q4_K_M',
         'temperature': 0.7,
         'max_tokens': 2000,
         'base_url': 'http://localhost:11434/v1'
@@ -265,6 +282,12 @@ DEFAULT_CONFIGS = {
         'base_url': 'https://openrouter.ai/api/v1',
         'frequency_penalty': 0.0,
         'presence_penalty': 0.0
+    },
+    LLMBackend.DEEPSEEK: {
+        'model': 'deepseek-chat',
+        'temperature': 0.7,
+        'max_tokens': 2000,
+        'base_url': 'https://api.deepseek.com'
     }
 }
 

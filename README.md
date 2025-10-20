@@ -42,15 +42,38 @@ The system now includes comprehensive integration with **Synthea**, a synthetic 
    set OPENAI_API_KEY=your-api-key-here       # Windows
    ```
 
-   ### Ollama (Local)
+   ### Ollama (Local/Remote)
+   
+   **Local Ollama Setup:**
    1. Install Ollama from https://ollama.ai
-   2. Pull a model: `ollama pull llama2`
+   2. Pull a model: `ollama pull alibayram/medgemma:4b`
    3. Start Ollama: `ollama serve`
-   4. Set environment variable (optional):
+   4. Set environment variables (optional):
    ```bash
-   export OLLAMA_MODEL="llama2"
+   export OLLAMA_MODEL="alibayram/medgemma:4b"
    export OLLAMA_BASE_URL="http://localhost:11434/v1"
    ```
+   
+   **Remote Ollama Server Setup:**
+   For connecting to a remote Ollama server (like `100.101.241.121`):
+   ```bash
+   export LLM_BACKEND="ollama"
+   export OLLAMA_BASE_URL="http://100.101.241.121:11434/v1"
+   export OLLAMA_MODEL="alibayram/medgemma:4b"
+   ```
+   
+   **Quick Setup Scripts:**
+   Use the provided setup scripts for convenience:
+   ```bash
+   # Unix/macOS
+   source setup_ollama_env.sh
+   
+   # Windows
+   setup_ollama_env.bat
+   ```
+   
+   **Medical-Specific Model:**
+   The default model `alibayram/medgemma:4b` is specifically trained for medical reasoning and provides enhanced performance for healthcare simulation tasks.
 
    ### Openrouter
    ```bash

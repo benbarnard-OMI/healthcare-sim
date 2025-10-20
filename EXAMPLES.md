@@ -16,19 +16,53 @@ python simulate.py --scenario diabetes
 python simulate.py --backend openai --model gpt-3.5-turbo --scenario chest_pain
 ```
 
-### 2. Ollama (Local)
+### 2. Ollama (Local/Remote)
+
+**Local Ollama Setup:**
 ```bash
 # First, install and start Ollama
 # Visit: https://ollama.ai
 
-# Pull a model
-ollama pull llama2
+# Pull the medical-specific model
+ollama pull alibayram/medgemma:4b
 
-# Run simulation
-python simulate.py --backend ollama --model llama2 --scenario pediatric
+# Run simulation with local Ollama
+python simulate.py --backend ollama --model alibayram/medgemma:4b --scenario pediatric
 
 # Test connection
 python simulate.py --backend ollama --test-connection
+```
+
+**Remote Ollama Server Setup:**
+```bash
+# Using the remote Ollama server at 100.101.241.121
+python simulate.py --backend ollama \
+  --base-url http://100.101.241.121:11434/v1 \
+  --model alibayram/medgemma:4b \
+  --scenario chest_pain
+
+# Test connection to remote server
+python simulate.py --backend ollama \
+  --base-url http://100.101.241.121:11434/v1 \
+  --model alibayram/medgemma:4b \
+  --test-connection
+
+# Run with Synthea-generated scenarios
+python simulate.py --backend ollama \
+  --base-url http://100.101.241.121:11434/v1 \
+  --model alibayram/medgemma:4b \
+  --generate-synthea --num-patients 5
+```
+
+**Using Environment Scripts:**
+```bash
+# Unix/macOS - Set up environment and run
+source setup_ollama_env.sh
+python simulate.py --scenario diabetes
+
+# Windows - Set up environment and run
+setup_ollama_env.bat
+python simulate.py --scenario diabetes
 ```
 
 ### 3. Openrouter

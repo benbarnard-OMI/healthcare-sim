@@ -2,12 +2,17 @@ import os
 import sys
 import json
 import argparse
+import random
+from dotenv import load_dotenv
 from crew import HealthcareSimulationCrew
 from llm_config import create_llm_config, get_available_backends, LLMBackend
 from datetime import datetime
 from sample_data.sample_messages import SAMPLE_MESSAGES
 from scenario_loader import get_scenario_loader, get_message, list_scenarios
 import logging
+
+# Load environment variables from .env file
+load_dotenv()
 from typing import Any, Optional
 
 # Configure logging
@@ -48,6 +53,7 @@ def main() -> None:
     parser.add_argument('--temperature', '-t', type=float, default=0.7, help='Temperature for LLM responses (default: 0.7)')
     parser.add_argument('--verbose', '-v', action='store_true', help='Enable verbose output')
     parser.add_argument('--scenario', '-s', type=str, help=f'Sample scenario name. Options: {", ".join(list_scenarios())}')
+    parser.add_argument('--random-scenario', action='store_true', help='Randomly select a scenario from available options')
     parser.add_argument('--test-connection', action='store_true', help='Test LLM connection and exit')
     parser.add_argument('--generate-synthea', action='store_true', help='Generate new Synthea scenarios before simulation')
     parser.add_argument('--num-patients', type=int, default=20, help='Number of Synthea patients to generate')
@@ -110,6 +116,15 @@ def main() -> None:
             if not args.scenario:
                 logger.warning("Falling back to default scenario")
     
+    # Handle random scenario selection
+    if args.random_scenario:
+        available_scenarios = list_scenarios()
+        if available_scenarios:
+            args.scenario = random.choice(available_scenarios)
+            logger.info(f"Randomly selected scenario: {args.scenario}")
+        else:
+            logger.warning("No scenarios available for random selection")
+    
     # Prepare the HL7 message
     hl7_message = None
     
@@ -136,8 +151,16 @@ def main() -> None:
         except ImportError:
             pass
         
-        hl7_message = loader.get_hl7_message("chest_pain")  # Default scenario
-        logger.info("Using default chest pain scenario via scenario loader")
+        # Use random scenario if no specific scenario provided
+        available_scenarios = list_scenarios()
+        if available_scenarios:
+            default_scenario = random.choice(available_scenarios)
+            logger.info(f"Using random default scenario: {default_scenario}")
+        else:
+            default_scenario = "chest_pain"
+            logger.info("Using fallback chest pain scenario")
+        
+        hl7_message = loader.get_hl7_message(default_scenario)
     
     # Run the simulation with the HL7 message
     try:

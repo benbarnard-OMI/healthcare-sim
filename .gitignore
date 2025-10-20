@@ -39,6 +39,10 @@ results*.txt
 # Streamlit
 .streamlit/
 
+# Synthea
+synthea/
+*.jar
+
 # Misc
 .DS_Store
 Thumbs.db

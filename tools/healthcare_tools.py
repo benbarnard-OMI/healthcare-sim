@@ -32,10 +32,20 @@ class ClinicalGuidelinesTool(BaseTool):
         """
         Get evidence-based clinical guidelines for a specific condition.
         Args:
-            condition: The medical condition to get guidelines for
+            condition: The medical condition to get guidelines for (string or dict)
         Returns:
             String containing clinical guidelines for the condition
         """
+        # Handle both string and dict inputs (for CrewAI compatibility)
+        if isinstance(condition, dict):
+            # Extract the actual condition from the dict format
+            condition = condition.get('description', condition.get('condition', str(condition)))
+        elif not isinstance(condition, str):
+            condition = str(condition)
+            
+        # Validate input
+        if not condition or not condition.strip():
+            return "Error: No medical condition provided. Please specify a condition to search for guidelines."
         # Comprehensive evidence-based guidelines database
         guidelines_db = {
             "chest pain": """
@@ -237,12 +247,19 @@ class MedicationInteractionTool(BaseTool):
         """
         Check for potential interactions between multiple medications.
         Args:
-            medications: Comma-separated list of medications to check
+            medications: Comma-separated list of medications to check (string or dict)
         Returns:
             String describing potential interactions with severity levels
         """
+        # Handle both string and dict inputs (for CrewAI compatibility)
+        if isinstance(medications, dict):
+            # Extract the actual medications from the dict format
+            medications = medications.get('description', medications.get('medications', str(medications)))
+        elif not isinstance(medications, str):
+            medications = str(medications)
+            
         if not medications or not medications.strip():
-            return "No medications provided for interaction checking."
+            return "Error: No medications provided for interaction checking. Please provide a comma-separated list of medications."
         
         # Parse and normalize medication names
         med_list = []
@@ -503,6 +520,12 @@ class AppointmentSchedulerTool(BaseTool):
         Returns:
             String with detailed appointment information
         """
+        # Handle dict input format (for CrewAI compatibility)
+        if isinstance(appointment_type, dict):
+            appointment_type = appointment_type.get('description', appointment_type.get('appointment_type', str(appointment_type)))
+        elif not isinstance(appointment_type, str):
+            appointment_type = str(appointment_type)
+            
         # Enhanced appointment type configurations
         appointment_types = {
             "follow-up": {

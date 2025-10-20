@@ -66,7 +66,7 @@ class ScenarioLoader:
             fallback_module: Python module containing SAMPLE_MESSAGES (for backward compatibility)
             enable_synthea: Whether to enable Synthea integration for realistic patient data
         """
-        self.config_path = config_path or os.path.join(os.path.dirname(__file__), 'scenarios.yaml')
+        self.config_path = config_path or os.path.join(os.path.dirname(__file__), 'config', 'scenarios.yaml')
         self.fallback_module = fallback_module
         self.enable_synthea = enable_synthea and SYNTHEA_AVAILABLE
         self._scenarios: Dict[str, PatientScenario] = {}
