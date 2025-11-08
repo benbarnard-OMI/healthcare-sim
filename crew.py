@@ -416,7 +416,7 @@ class HealthcareSimulationCrew:
                     model=f"ollama/{self.llm_config.model}",
                     base_url=self.llm_config.base_url.replace('/v1', '') if self.llm_config.base_url else 'http://localhost:11434',
                     temperature=self.llm_config.temperature,
-                    max_tokens=self.llm_config.max_tokens
+                    max_tokens=min(self.llm_config.max_tokens or 2000, 1500)  # Limit max tokens for efficiency
                 )
                 logger.info(f"Created CrewAI LLM with Ollama: ollama/{self.llm_config.model}")
             elif self.llm_config.backend == LLMBackend.OPENROUTER:
@@ -425,7 +425,7 @@ class HealthcareSimulationCrew:
                     base_url=self.llm_config.base_url,
                     api_key=self.llm_config.api_key,
                     temperature=self.llm_config.temperature,
-                    max_tokens=self.llm_config.max_tokens
+                    max_tokens=min(self.llm_config.max_tokens or 2000, 1500)  # Limit max tokens for efficiency
                 )
                 logger.info(f"Created CrewAI LLM with OpenRouter: openrouter/{self.llm_config.model}")
             elif self.llm_config.backend == LLMBackend.DEEPSEEK:
@@ -434,7 +434,7 @@ class HealthcareSimulationCrew:
                     api_key=self.llm_config.api_key,
                     base_url=self.llm_config.base_url,
                     temperature=self.llm_config.temperature,
-                    max_tokens=self.llm_config.max_tokens
+                    max_tokens=min(self.llm_config.max_tokens or 2000, 1500)  # Limit max tokens for efficiency
                 )
                 logger.info(f"Created CrewAI LLM with DeepSeek: {self.llm_config.model}")
             else:  # OpenAI
@@ -443,7 +443,7 @@ class HealthcareSimulationCrew:
                     api_key=self.llm_config.api_key,
                     base_url=self.llm_config.base_url,
                     temperature=self.llm_config.temperature,
-                    max_tokens=self.llm_config.max_tokens
+                    max_tokens=min(self.llm_config.max_tokens or 2000, 1500)  # Limit max tokens for efficiency
                 )
                 logger.info(f"Created CrewAI LLM with OpenAI: {self.llm_config.model}")
             
@@ -638,21 +638,11 @@ class HealthcareSimulationCrew:
 
     @task
     def make_clinical_decisions(self) -> Task:
-        """Task for making clinical decisions based on the starting Synthea HL7 data."""
+        """Task for making clinical decisions and planning next steps based on the starting Synthea HL7 data."""
         config = {
-            'description': 'Based on the patient\'s current state from the Synthea HL7 message, make clinical decisions: assess acuity level, determine disposition (admit/discharge/observe), and identify what interventions are needed.',
-            'expected_output': 'Clinical decision summary including: acuity assessment (stable/unstable/critical), disposition recommendation (admit/discharge/observe), immediate interventions needed, and priority level.',
+            'description': 'Based on the patient\'s current state from the Synthea HL7 message: (1) Assess acuity level and determine disposition (admit/discharge/observe), (2) Identify immediate interventions needed, (3) Plan specific orders (labs, imaging, medications with doses), consultations, and monitoring for next 24-48 hours.',
+            'expected_output': 'Clinical plan including: acuity assessment (stable/unstable/critical), disposition recommendation, immediate interventions, specific orders (lab codes, imaging, medications with doses), consultation requests, and monitoring parameters.',
             'agent': self.diagnostics_agent()
-        }
-        return Task(**config)
-
-    @task
-    def generate_next_steps(self) -> Task:
-        """Task for planning the next steps in the clinical pathway."""
-        config = {
-            'description': 'Based on the clinical decisions, plan the next steps: what specific orders need to be placed (labs, imaging, medications), what consultations to request, and what monitoring is needed.',
-            'expected_output': 'Next steps plan including: specific orders to place (lab codes, imaging studies, medications with doses), consultation requests, monitoring parameters, and immediate actions for the next 24-48 hours.',
-            'agent': self.treatment_planner()
         }
         return Task(**config)
 
@@ -660,8 +650,8 @@ class HealthcareSimulationCrew:
     def generate_hl7_messages(self) -> Task:
         """Task for generating a complete clinical pathway with all required HL7 messages."""
         config = {
-            'description': 'Generate a COMPLETE clinical pathway with ALL required HL7 messages that would be created in a real hospital system. CRITICAL HL7 FIELD MAPPING FIXES REQUIRED: 1) PID field mapping: MRN in PID-3 (not PID-2), format PID|1||123456789^^^MAIN_HOSPITAL^MR||DOE^JOHN^M, 2) DG1 coding system: use ICD-10-CM (not I10), format DG1|2||E11.9^Type 2 diabetes mellitus^ICD-10-CM, 3) ORC field mapping: timestamp in ORC-9 (not ORC-5), provider in ORC-12, 4) RXO field mapping: RXO|NDC^DRUG^NDC|dose|units (omit RXO-3 unless max dose), separate RXR and TQ1 segments, 5) WBC/platelet UCUM units: use 10*9/L^10*9/L^UCUM (not 109/L), 6) Complete all messages: finish truncated pharmacy message, add ADT^A03 discharge, MDM^T02 discharge summary with TXA and diagnoses as CWE in OBX-5, add complete pharmacy discharge message, 7) Segment termination: end each segment after last meaningful field, avoid trailing empty pipes. PREVIOUS FIXES MAINTAINED: PV1 provider in PV1-7, RAS ORC-1 use SC, correct BP LOINC codes, distinct provider IDs, result-order linkage. REQUIREMENTS: Valid NDC codes, consistent patient data, proper HL7 v2.5.1 formatting, realistic timestamps.',
-            'expected_output': 'Complete clinical pathway with ALL required HL7 messages in chronological order with PROPER HL7 FIELD MAPPING AND PROPER SEGMENT TERMINATION. CRITICAL FIXES: 1) PID format: PID|1||123456789^^^MAIN_HOSPITAL^MR||DOE^JOHN^M (MRN in PID-3, not PID-2), 2) DG1 format: DG1|2||E11.9^Type 2 diabetes mellitus^ICD-10-CM (ICD-10-CM coding system), 3) ORC format: ORC|NW|ORD123|||||||20231015101500|||1234567890^SMITH^JANE^MD (timestamp in ORC-9), 4) RXO format: RXO|00093-0245-56^LISINOPRIL 20MG TAB^NDC|20|mg (dose in RXO-2, units in RXO-3), 5) WBC units: OBX|...|6690-2^Leukocytes^LN||6.8|10*9/L^10*9/L^UCUM|4.5-11.0|N (proper UCUM format), 6) Complete messages: finish truncated pharmacy message, add ADT^A03 discharge, MDM^T02 discharge summary with TXA and diagnoses as CWE in OBX-5, add complete pharmacy discharge message. Must include: 1) ADT^A01 admission with proper PID-3 MRN and DG1 ICD-10-CM coding, 2) ORM^O01 lab orders with ORC-9 timestamps, 3) ORU^R01 lab results with proper UCUM units (10*9/L), 4) ORM^O01 medication orders with correct RXO field mapping, 5) RAS^O17 medication administrations, 6) Complete ADT^A08 patient updates, 7) ADT^A03 discharge, 8) MDM^T02 discharge summary with TXA and diagnoses as CWE in OBX-5, 9) Complete pharmacy discharge message. All messages must have consistent patient data, valid codes, proper HL7 v2.5.1 structure with correct field positions, and realistic timestamps.',
+            'description': 'Generate complete clinical pathway with ALL required HL7 messages in chronological order. Reference HL7_FORMATTING_REFERENCE.md for critical field mappings. Must include: ADT^A01 admission, ORM^O01 lab orders, ORU^R01 results, ORM^O01 medication orders, RAS^O17 administrations, ADT^A08 updates, ADT^A03 discharge, MDM^T02 discharge summary, and pharmacy discharge message. Use proper HL7 v2.5.1 formatting with consistent patient data, valid codes, and realistic timestamps.',
+            'expected_output': 'Complete clinical pathway with all required HL7 messages in chronological order, following HL7 v2.5.1 standards. Each message must be properly formatted with correct field positions, valid codes (NDC, LOINC, ICD-10-CM), and consistent patient data throughout.',
             'agent': self.treatment_planner()
         }
         return Task(**config)
@@ -688,11 +678,10 @@ class HealthcareSimulationCrew:
         # Create LLM instance using CrewAI's LLM class
         llm = self._create_crewai_llm()
         
-        # Use only essential tasks for realistic clinical workflow
+        # Use optimized task flow: combined decisions+planning, streamlined HL7 generation
         clinical_tasks = [
             self.parse_hl7_data(),
-            self.make_clinical_decisions(),
-            self.generate_next_steps(),
+            self.make_clinical_decisions(),  # Now includes both decisions and next steps planning
             self.generate_hl7_messages()
         ]
         
@@ -709,7 +698,7 @@ class HealthcareSimulationCrew:
             process=Process.sequential,  # Use sequential process for clear workflow
             verbose=True,
             llm=llm,  # Pass LLM instance to CrewAI
-            max_iter=1,  # Single iteration for realistic speed
-            max_execution_time=60,  # 1 minute timeout for realistic speed
+            max_iter=2,  # Allow one retry for better reliability
+            max_execution_time=90,  # Increased timeout to accommodate retries
             step_callback=self._step_callback  # Add callback for monitoring
         )
